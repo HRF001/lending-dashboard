@@ -179,6 +179,135 @@ def broker_risk():
         cur.close()
         conn.close()
 
+def top_lenders():
+        conn = get_conn()
+        cur = conn.cursor()
+
+        try:
+            cur.execute("""
+                SELECT
+                    lender,
+                    COUNT(*) AS deals,
+                    SUM(principal_amount) AS total_principal
+                FROM clean_lending_activity
+                WHERE lender IS NOT NULL
+                AND TRIM(lender) <> ''
+                GROUP BY lender
+                ORDER BY total_principal DESC
+                LIMIT 10
+            """)
+            rows = cur.fetchall()
+
+            results = []
+            for row in rows:
+                results.append({
+                    "lender": row[0],
+                    "deals": row[1],
+                    "principal": float(row[2]) if row[2] is not None else 0
+                })
+            return results
+
+        finally:
+            cur.close()
+            conn.close()
+
+def lender_risk_score():
+    conn = get_conn()
+    cur = conn.cursor()
+
+    try:
+        cur.execute("""
+            WITH base AS (
+                SELECT
+                    lender,
+                    COUNT(*) AS deals,
+                    SUM(principal_amount) AS total_principal,
+                    AVG(lvr) AS avg_lvr,
+                    AVG(rate) AS avg_rate
+                FROM clean_lending_activity
+                WHERE lender IS NOT NULL
+                  AND TRIM(lender) <> ''
+                  AND lvr > 0
+                GROUP BY lender
+                HAVING COUNT(*) >= 5
+            ),
+            norm AS (
+                SELECT
+                    lender,
+                    deals,
+                    total_principal,
+                    avg_lvr,
+                    avg_rate,
+                    deals * 1.0 / NULLIF(MAX(deals) OVER(), 0) AS n_deals,
+                    LOG(total_principal + 1) / NULLIF(MAX(LOG(total_principal + 1)) OVER(), 0) AS n_principal,
+                    avg_lvr / NULLIF(MAX(avg_lvr) OVER(), 0) AS n_lvr,
+                    avg_rate / NULLIF(MAX(avg_rate) OVER(), 0) AS n_rate
+                FROM base
+            )
+            SELECT
+                lender,
+                deals,
+                total_principal,
+                avg_lvr,
+                avg_rate,
+                ROUND((
+                    0.30 * n_lvr +
+                    0.25 * n_rate +
+                    0.25 * n_principal +
+                    0.20 * n_deals
+                ) * 100, 1) AS score,
+                CASE
+                    WHEN (
+                        0.30 * n_lvr +
+                        0.25 * n_rate +
+                        0.25 * n_principal +
+                        0.20 * n_deals
+                    ) * 100 >= 45 THEN 'A'
+                    WHEN (
+                        0.30 * n_lvr +
+                        0.25 * n_rate +
+                        0.25 * n_principal +
+                        0.20 * n_deals
+                    ) * 100 >= 30 THEN 'B'
+                    WHEN (
+                        0.30 * n_lvr +
+                        0.25 * n_rate +
+                        0.25 * n_principal +
+                        0.20 * n_deals
+                    ) * 100 >= 20 THEN 'C'
+                    ELSE 'D'
+                END AS grade
+            FROM norm
+            ORDER BY score DESC
+            LIMIT 10
+        """)
+        rows = cur.fetchall()
+
+        results = []
+        for row in rows:
+            results.append({
+                "lender": row[0],
+                "deals": row[1],
+                "principal": float(row[2]) if row[2] is not None else 0,
+                "lvr": float(row[3]) if row[3] is not None else 0,
+                "rate": float(row[4]) if row[4] is not None else 0,
+                "score": float(row[5]) if row[5] is not None else 0,
+                "grade": row[6]
+            })
+        return results
+
+    finally:
+        cur.close()
+        conn.close()
+        
+@app.route("/api/top-lenders")
+def api_top_lenders():
+    return jsonify(top_lenders())
+
+@app.route("/api/lender-risk")
+def api_lender_risk():
+    return jsonify(lender_risk_score())
+
 @app.route("/api/market-structure")
 def market_structure():
     conn = get_conn()

@@ -115,8 +115,50 @@ async function loadTrend() {
 }
 
 async function refreshData() {
-    await fetch("/api/refresh");
-    await loadAll();
+    try {
+        const [
+            summaryRes,
+            marketRes,
+            trendRes,
+            brokersRes,
+            brokerRiskRes,
+            lendersRes,
+            lenderRiskRes
+        ] = await Promise.all([
+            fetch("/api/summary"),
+            fetch("/api/market-structure"),
+            fetch("/api/settlement-trend"),
+            fetch("/api/top-brokers"),
+            fetch("/api/broker-risk"),
+            fetch("/api/top-lenders"),
+            fetch("/api/lender-risk")
+        ]);
+
+        const summary = await summaryRes.json();
+        const market = await marketRes.json();
+        const trend = await trendRes.json();
+        const brokers = await brokersRes.json();
+        const brokerRisk = await brokerRiskRes.json();
+        const lenders = await lendersRes.json();
+        const lenderRisk = await lenderRiskRes.json();
+
+        document.getElementById("totalDeals").textContent = summary.total_deals ?? "-";
+        document.getElementById("totalPrincipal").textContent =
+            summary.total_principal ? Number(summary.total_principal).toLocaleString() : "-";
+        document.getElementById("avgPrincipal").textContent =
+            summary.avg_principal ? Number(summary.avg_principal).toLocaleString() : "-";
+
+        renderTopBrokers(brokers);
+        renderRiskTable(brokerRisk);
+        renderTopLenders(lenders);
+        renderLenderRiskTable(lenderRisk);
+
+        renderMarketChart(market);
+        renderTrendChart(trend);
+
+    } catch (error) {
+        console.error("刷新数据失败:", error);
+    }
 }
 
 async function loadAll() {
@@ -125,6 +167,38 @@ async function loadAll() {
     await loadRisk();
     await loadMarketStructure();
     await loadTrend();
+}
+
+function renderTopLenders(lenders) {
+    const lenderList = document.getElementById("lenderList");
+    lenderList.innerHTML = "";
+
+    lenders.forEach(lender => {
+        const li = document.createElement("li");
+        li.textContent = `${lender.lender} | Deals: ${lender.deals} | Principal: ${Number(lender.principal).toLocaleString()}`;
+        lenderList.appendChild(li);
+    });
+}
+
+function renderLenderRiskTable(lenders) {
+    const tableBody = document.getElementById("lenderRiskTable");
+    tableBody.innerHTML = "";
+
+    lenders.forEach(lender => {
+        const row = document.createElement("tr");
+
+        row.innerHTML = `
+            <td>${lender.lender}</td>
+            <td>${lender.deals}</td>
+            <td>${Number(lender.principal).toLocaleString()}</td>
+            <td>${Number(lender.lvr).toFixed(2)}</td>
+            <td>${Number(lender.rate).toFixed(2)}</td>
+            <td>${Number(lender.score).toFixed(1)}</td>
+            <td>${lender.grade}</td>
+        `;
+
+        tableBody.appendChild(row);
+    });
 }
 
 loadAll();

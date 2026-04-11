@@ -6,11 +6,11 @@ app = Flask(__name__)
 
 def get_conn():
     return psycopg2.connect(
-        host="127.0.0.1",
-        port=5433,
-        dbname="lending_db",
-        user="postgres",
-        password="1"
+        host=os.environ["dpg-d7cvcndckfvc73efcubg-a.oregon-postgres.render.com"],
+        port=os.environ.get("PGPORT", 5432),
+        dbname=os.environ["omicron"],
+        user=os.environ["omicron_user"],
+        password=os.environ["pxYOIUbbg1nd93565IONMBG6Dvc4niQE"]
     )
 
 @app.route("/")

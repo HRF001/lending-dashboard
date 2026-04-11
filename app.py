@@ -97,6 +97,7 @@ def broker_risk():
               AND broker NOT ILIKE '%not disclosed%'
               AND broker NOT ILIKE '%no broker%'
               AND broker NOT ILIKE '%direct%'
+              AND lvr > 0
             GROUP BY broker
         ),
         norm AS (

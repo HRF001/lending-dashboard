@@ -167,7 +167,8 @@ def broker_risk():
                 "principal": float(r[2] or 0),
                 "lvr": float(r[3] or 0),
                 "rate": float(r[4] or 0),
-                "score": float(r[5] or 0)
+                "score": float(r[5] or 0),
+                "grade": r[6]
             }
             for r in rows
         ])

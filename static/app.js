@@ -42,8 +42,8 @@ async function loadRisk() {
 
     data.forEach(b => {
         let scoreClass = "score-low";
-        if (b.score >= 0.45) scoreClass = "score-high";
-        else if (b.score >= 0.20) scoreClass = "score-mid";
+        if (b.score >= 45) scoreClass = "score-high";
+        else if (b.score >= 30) scoreClass = "score-mid";
 
         table.innerHTML += `
             <tr>
@@ -52,7 +52,8 @@ async function loadRisk() {
                 <td>${formatNumber(b.principal)}</td>
                 <td>${b.lvr ? b.lvr.toFixed(2) : "0.00"}</td>
                 <td>${b.rate ? b.rate.toFixed(2) : "0.00"}</td>
-                <td class="${scoreClass}">${b.score.toFixed(3)}</td>
+                <td class="${scoreClass}">${b.score.toFixed(1)}</td>
+                <td><strong>${b.grade}</strong></td>
             </tr>
         `;
     });

@@ -112,21 +112,50 @@ def broker_risk():
                 avg_rate / NULLIF(MAX(avg_rate) OVER(), 0) AS n_rate
             FROM base
         )
-        SELECT
-            broker,
-            deals,
-            total_principal,
-            avg_lvr,
-            avg_rate,
-            (
-                0.40 * COALESCE(n_principal, 0) +
-                0.30 * COALESCE(n_deals, 0) -
-                0.20 * COALESCE(n_lvr, 0) -
-                0.10 * COALESCE(n_rate, 0)
-            ) AS score
-        FROM norm
-        ORDER BY score DESC
-        LIMIT 20;
+            SELECT
+                broker,
+                deals,
+                total_principal,
+                avg_lvr,
+                avg_rate,
+                (
+                    (
+                        0.40 * COALESCE(n_principal, 0) +
+                        0.30 * COALESCE(n_deals, 0) -
+                        0.20 * COALESCE(n_lvr, 0) -
+                        0.10 * COALESCE(n_rate, 0)
+                    ) * 100
+                ) AS score,
+                CASE
+                    WHEN (
+                        (
+                            0.40 * COALESCE(n_principal, 0) +
+                            0.30 * COALESCE(n_deals, 0) -
+                            0.20 * COALESCE(n_lvr, 0) -
+                            0.10 * COALESCE(n_rate, 0)
+                        ) * 100
+                    ) >= 45 THEN 'A'
+                    WHEN (
+                        (
+                            0.40 * COALESCE(n_principal, 0) +
+                            0.30 * COALESCE(n_deals, 0) -
+                            0.20 * COALESCE(n_lvr, 0) -
+                            0.10 * COALESCE(n_rate, 0)
+                        ) * 100
+                    ) >= 30 THEN 'B'
+                    WHEN (
+                        (
+                            0.40 * COALESCE(n_principal, 0) +
+                            0.30 * COALESCE(n_deals, 0) -
+                            0.20 * COALESCE(n_lvr, 0) -
+                            0.10 * COALESCE(n_rate, 0)
+                        ) * 100
+                    ) >= 15 THEN 'C'
+                    ELSE 'D'
+                END AS grade
+            FROM norm
+            ORDER BY score DESC
+            LIMIT 20;
         """)
 
         rows = cur.fetchall()

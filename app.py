@@ -191,6 +191,7 @@ def top_lenders():
                     SUM(principal_amount) AS total_principal
                 FROM clean_lending_activity
                 WHERE lender IS NOT NULL
+                AND lender <> 'Privacy Settings Engaged'
                 AND TRIM(lender) <> ''
                 GROUP BY lender
                 ORDER BY total_principal DESC
@@ -226,11 +227,14 @@ def lender_risk_score():
                     AVG(rate) AS avg_rate
                 FROM clean_lending_activity
                 WHERE lender IS NOT NULL
-                  AND TRIM(lender) <> ''
-                  AND lvr > 0
+                AND TRIM(lender) <> ''
+                AND lvr > 0
+                AND lender NOT ILIKE '%privacy%'
+                AND lender NOT ILIKE '%investor owned by broker%'
                 GROUP BY lender
                 HAVING COUNT(*) >= 5
             ),
+
             norm AS (
                 SELECT
                     lender,
@@ -238,48 +242,52 @@ def lender_risk_score():
                     total_principal,
                     avg_lvr,
                     avg_rate,
-                    deals * 1.0 / NULLIF(MAX(deals) OVER(), 0) AS n_deals,
-                    LOG(total_principal + 1) / NULLIF(MAX(LOG(total_principal + 1)) OVER(), 0) AS n_principal,
+
+                    -- 标准化
                     avg_lvr / NULLIF(MAX(avg_lvr) OVER(), 0) AS n_lvr,
-                    avg_rate / NULLIF(MAX(avg_rate) OVER(), 0) AS n_rate
+                    avg_rate / NULLIF(MAX(avg_rate) OVER(), 0) AS n_rate,
+                    LOG(total_principal + 1) / NULLIF(MAX(LOG(total_principal + 1)) OVER(), 0) AS n_principal,
+                    deals * 1.0 / NULLIF(MAX(deals) OVER(), 0) AS n_deals
+
                 FROM base
+            ),
+
+            scored AS (
+                SELECT
+                    lender,
+                    deals,
+                    total_principal,
+                    avg_lvr,
+                    avg_rate,
+
+                    ROUND((
+                        0.35 * n_lvr +
+                        0.25 * n_rate +
+                        0.25 * n_principal +
+                        0.15 * n_deals
+                    ) * 100, 1) AS score
+
+                FROM norm
             )
+
             SELECT
                 lender,
                 deals,
                 total_principal,
                 avg_lvr,
                 avg_rate,
-                ROUND((
-                    0.30 * n_lvr +
-                    0.25 * n_rate +
-                    0.25 * n_principal +
-                    0.20 * n_deals
-                ) * 100, 1) AS score,
+                score,
+
                 CASE
-                    WHEN (
-                        0.30 * n_lvr +
-                        0.25 * n_rate +
-                        0.25 * n_principal +
-                        0.20 * n_deals
-                    ) * 100 >= 45 THEN 'A'
-                    WHEN (
-                        0.30 * n_lvr +
-                        0.25 * n_rate +
-                        0.25 * n_principal +
-                        0.20 * n_deals
-                    ) * 100 >= 30 THEN 'B'
-                    WHEN (
-                        0.30 * n_lvr +
-                        0.25 * n_rate +
-                        0.25 * n_principal +
-                        0.20 * n_deals
-                    ) * 100 >= 20 THEN 'C'
-                    ELSE 'D'
-                END AS grade
-            FROM norm
+                    WHEN score >= 75 THEN 'Very Aggressive'
+                    WHEN score >= 60 THEN 'Aggressive'
+                    WHEN score >= 45 THEN 'Moderate'
+                    ELSE 'Conservative'
+                END AS category
+
+            FROM scored
             ORDER BY score DESC
-            LIMIT 10
+            LIMIT 20;
         """)
         rows = cur.fetchall()
 

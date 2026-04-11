@@ -2,41 +2,38 @@ let marketChartInstance = null;
 let trendChartInstance = null;
 
 function formatNumber(num) {
-    return new Intl.NumberFormat().format(Math.round(num));
+    if (num === null || num === undefined || isNaN(num)) return "-";
+    return new Intl.NumberFormat().format(Math.round(Number(num)));
 }
 
-async function loadOverview() {
-    const res = await fetch("/api/overview");
-    const data = await res.json();
+function formatDecimal(num, digits = 2) {
+    if (num === null || num === undefined || isNaN(num)) return "0.00";
+    return Number(num).toFixed(digits);
+}
 
+function renderOverview(data) {
     document.getElementById("totalDeals").textContent = formatNumber(data.total_deals);
     document.getElementById("totalPrincipal").textContent = formatNumber(data.total_principal);
     document.getElementById("avgPrincipal").textContent = formatNumber(data.avg_principal);
 }
 
-async function loadTopBrokers() {
-    const res = await fetch("/api/top-brokers");
-    const data = await res.json();
-
+function renderTopBrokers(data) {
     const list = document.getElementById("brokerList");
     list.innerHTML = "";
 
     data.forEach(item => {
         const li = document.createElement("li");
-        li.textContent = `${item.broker} | Deals: ${item.deals} | Principal: ${formatNumber(item.total)}`;
+        li.textContent = `${item.broker} | Deals: ${item.deals} | Principal: ${formatNumber(item.principal ?? item.total)}`;
         list.appendChild(li);
     });
 }
 
-async function loadRisk() {
-    const res = await fetch("/api/broker-risk");
-    const data = await res.json();
-
+function renderRiskTable(data) {
     const table = document.getElementById("riskTable");
     table.innerHTML = "";
 
     if (!Array.isArray(data)) {
-        table.innerHTML = `<tr><td colspan="6">加载失败：${data.error || "未知错误"}</td></tr>`;
+        table.innerHTML = `<tr><td colspan="7">加载失败：${data.error || "未知错误"}</td></tr>`;
         return;
     }
 
@@ -47,22 +44,60 @@ async function loadRisk() {
 
         table.innerHTML += `
             <tr>
-                <td>${b.broker}</td>
-                <td>${b.deals}</td>
+                <td>${b.broker ?? "-"}</td>
+                <td>${b.deals ?? "-"}</td>
                 <td>${formatNumber(b.principal)}</td>
-                <td>${b.lvr ? b.lvr.toFixed(2) : "0.00"}</td>
-                <td>${b.rate ? b.rate.toFixed(2) : "0.00"}</td>
-                <td class="${scoreClass}">${b.score.toFixed(1)}</td>
-                <td><strong>${b.grade}</strong></td>
+                <td>${formatDecimal(b.lvr, 2)}</td>
+                <td>${formatDecimal(b.rate, 2)}</td>
+                <td class="${scoreClass}">${formatDecimal(b.score, 1)}</td>
+                <td><strong>${b.grade ?? "-"}</strong></td>
             </tr>
         `;
     });
 }
 
-async function loadMarketStructure() {
-    const res = await fetch("/api/market-structure");
-    const data = await res.json();
+function renderTopLenders(data) {
+    const lenderList = document.getElementById("lenderList");
+    lenderList.innerHTML = "";
 
+    if (!Array.isArray(data)) return;
+
+    data.forEach(item => {
+        const li = document.createElement("li");
+        li.textContent = `${item.lender} | Deals: ${item.deals} | Principal: ${formatNumber(item.principal)}`;
+        lenderList.appendChild(li);
+    });
+}
+
+function renderLenderRiskTable(data) {
+    const tableBody = document.getElementById("lenderRiskTable");
+    tableBody.innerHTML = "";
+
+    if (!Array.isArray(data)) {
+        tableBody.innerHTML = `<tr><td colspan="7">加载失败</td></tr>`;
+        return;
+    }
+
+    data.forEach(item => {
+        let scoreClass = "score-low";
+        if (item.score >= 45) scoreClass = "score-high";
+        else if (item.score >= 30) scoreClass = "score-mid";
+
+        const row = document.createElement("tr");
+        row.innerHTML = `
+            <td>${item.lender ?? "-"}</td>
+            <td>${item.deals ?? "-"}</td>
+            <td>${formatNumber(item.principal)}</td>
+            <td>${formatDecimal(item.lvr, 2)}</td>
+            <td>${formatDecimal(item.rate, 2)}</td>
+            <td class="${scoreClass}">${formatDecimal(item.score, 1)}</td>
+            <td><strong>${item.grade ?? "-"}</strong></td>
+        `;
+        tableBody.appendChild(row);
+    });
+}
+
+function renderMarketChart(data) {
     const labels = data.map(x => x.type);
     const values = data.map(x => x.principal);
 
@@ -86,10 +121,7 @@ async function loadMarketStructure() {
     });
 }
 
-async function loadTrend() {
-    const res = await fetch("/api/trend");
-    const data = await res.json();
-
+function renderTrendChart(data) {
     const labels = data.map(x => x.date);
     const values = data.map(x => x.principal);
 
@@ -117,7 +149,7 @@ async function loadTrend() {
 async function refreshData() {
     try {
         const [
-            summaryRes,
+            overviewRes,
             marketRes,
             trendRes,
             brokersRes,
@@ -125,76 +157,36 @@ async function refreshData() {
             lendersRes,
             lenderRiskRes
         ] = await Promise.all([
-            fetch("/api/summary"),
+            fetch("/api/overview"),
             fetch("/api/market-structure"),
-            fetch("/api/settlement-trend"),
+            fetch("/api/trend"),
             fetch("/api/top-brokers"),
             fetch("/api/broker-risk"),
-            fetch("/api/top-lenders"),     
-            fetch("/api/lender-risk")      
+            fetch("/api/top-lenders"),
+            fetch("/api/lender-risk")
         ]);
 
-        const summary = await summaryRes.json();
+        const overview = await overviewRes.json();
         const market = await marketRes.json();
         const trend = await trendRes.json();
         const brokers = await brokersRes.json();
         const brokerRisk = await brokerRiskRes.json();
-        const lenders = await lendersRes.json();       
-        const lenderRisk = await lenderRiskRes.json();  
+        const lenders = await lendersRes.json();
+        const lenderRisk = await lenderRiskRes.json();
 
+        renderOverview(overview);
         renderTopBrokers(brokers);
         renderRiskTable(brokerRisk);
-
         renderTopLenders(lenders);
         renderLenderRiskTable(lenderRisk);
-
         renderMarketChart(market);
         renderTrendChart(trend);
 
+        console.log("lenders:", lenders);
+        console.log("lenderRisk:", lenderRisk);
     } catch (error) {
         console.error("刷新数据失败:", error);
     }
 }
 
-async function loadAll() {
-    await loadOverview();
-    await loadTopBrokers();
-    await loadRisk();
-    await loadMarketStructure();
-    await loadTrend();
-}
-
-function renderTopLenders(lenders) {
-    const lenderList = document.getElementById("lenderList");
-    lenderList.innerHTML = "";
-
-    lenders.forEach(lender => {
-        const li = document.createElement("li");
-        li.textContent = `${lender.lender} | Deals: ${lender.deals} | Principal: ${Number(lender.principal).toLocaleString()}`;
-        lenderList.appendChild(li);
-    });
-}
-
-function renderLenderRiskTable(lenders) {
-    const tableBody = document.getElementById("lenderRiskTable");
-    tableBody.innerHTML = "";
-
-    lenders.forEach(lender => {
-        const row = document.createElement("tr");
-
-        row.innerHTML = `
-            <td>${lender.lender}</td>
-            <td>${lender.deals}</td>
-            <td>${Number(lender.principal).toLocaleString()}</td>
-            <td>${Number(lender.lvr).toFixed(2)}</td>
-            <td>${Number(lender.rate).toFixed(2)}</td>
-            <td>${Number(lender.score).toFixed(1)}</td>
-            <td>${lender.grade}</td>
-        `;
-
-        tableBody.appendChild(row);
-    });
-}
-
-refreshData();
-loadAll();
+document.addEventListener("DOMContentLoaded", refreshData);

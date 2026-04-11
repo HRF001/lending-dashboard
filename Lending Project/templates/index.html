@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lending Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Lending Analytics Dashboard</h1>
+
+        <div class="actions">
+            <button onclick="refreshData()">刷新数据</button>
+        </div>
+
+        <section class="cards">
+            <div class="card">
+                <div class="label">Total Deals</div>
+                <div class="value" id="totalDeals">-</div>
+            </div>
+            <div class="card">
+                <div class="label">Total Principal</div>
+                <div class="value" id="totalPrincipal">-</div>
+            </div>
+            <div class="card">
+                <div class="label">Average Principal</div>
+                <div class="value" id="avgPrincipal">-</div>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2>Market Structure</h2>
+            <canvas id="marketChart"></canvas>
+        </section>
+
+        <section class="panel">
+            <h2>Settlement Trend</h2>
+            <canvas id="trendChart"></canvas>
+        </section>
+
+        <section class="panel">
+            <h2>Top Brokers</h2>
+            <ul id="brokerList"></ul>
+        </section>
+
+        <section class="panel">
+            <h2>Broker Risk & Score</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Broker</th>
+                        <th>Deals</th>
+                        <th>Principal</th>
+                        <th>LVR</th>
+                        <th>Rate</th>
+                        <th>Score</th>
+                    </tr>
+                </thead>
+                <tbody id="riskTable"></tbody>
+            </table>
+        </section>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

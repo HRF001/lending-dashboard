@@ -130,8 +130,8 @@ async function refreshData() {
             fetch("/api/settlement-trend"),
             fetch("/api/top-brokers"),
             fetch("/api/broker-risk"),
-            fetch("/api/top-lenders"),
-            fetch("/api/lender-risk")
+            fetch("/api/top-lenders"),     
+            fetch("/api/lender-risk")      
         ]);
 
         const summary = await summaryRes.json();
@@ -139,17 +139,12 @@ async function refreshData() {
         const trend = await trendRes.json();
         const brokers = await brokersRes.json();
         const brokerRisk = await brokerRiskRes.json();
-        const lenders = await lendersRes.json();
-        const lenderRisk = await lenderRiskRes.json();
-
-        document.getElementById("totalDeals").textContent = summary.total_deals ?? "-";
-        document.getElementById("totalPrincipal").textContent =
-            summary.total_principal ? Number(summary.total_principal).toLocaleString() : "-";
-        document.getElementById("avgPrincipal").textContent =
-            summary.avg_principal ? Number(summary.avg_principal).toLocaleString() : "-";
+        const lenders = await lendersRes.json();       
+        const lenderRisk = await lenderRiskRes.json();  
 
         renderTopBrokers(brokers);
         renderRiskTable(brokerRisk);
+
         renderTopLenders(lenders);
         renderLenderRiskTable(lenderRisk);
 
@@ -201,4 +196,5 @@ function renderLenderRiskTable(lenders) {
     });
 }
 
+refreshData();
 loadAll();

@@ -8,7 +8,7 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
 app = Flask(__name__)
- 
+
 def get_conn():
     return psycopg2.connect(
         host=os.environ["PGHOST"],

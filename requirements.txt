@@ -3,4 +3,4 @@ psycopg2-binary
 gunicorn
 pandas
 openpyxl
-scikit-learn == 1.4.1
+scikit-learn == 1.4.1.post1

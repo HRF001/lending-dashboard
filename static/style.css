@@ -6,12 +6,12 @@ body {
 }
 
 .chart-wrap {
-    width: 350px;
+    width: 650px;
     margin: 0 auto;
 }
 
 .container {
-    max-width: 1400px;
+    max-width: 1600px;
     margin: 0 auto;
     padding: 20px;
 }
@@ -125,6 +125,20 @@ ul {
 .table-wrap td {
     white-space: nowrap;
 }
+
+.panel {
+    background: white;
+    padding: 16px;
+    border-radius: 10px;
+}
+
+/* 👇关键：给表格区域固定高度 */
+.table-wrap {
+    max-height: 700px;     /* 你可以改 250 / 350 */
+    overflow-y: auto;      /* 纵向滚动 */
+    overflow-x: auto;
+}
+
 
 /* 手机适配 */
 @media (max-width: 900px) {

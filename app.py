@@ -3,6 +3,7 @@ import psycopg2
 import subprocess
 import os
 import pandas as pd
+from model_predict import score_loans
 
 app = Flask(__name__)
 
@@ -82,101 +83,97 @@ def top_brokers():
 @app.route("/api/broker-risk")
 def broker_risk():
     conn = get_conn()
-    cur = conn.cursor()
 
     try:
-        cur.execute("""
-        WITH base AS (
+        query = """
             SELECT
                 broker,
-                COUNT(*) AS deals,
-                SUM(principal_amount) AS total_principal,
-                AVG(lvr) AS avg_lvr,
-                AVG(rate) AS avg_rate
+                priority_level,
+                principal_amount,
+                rate,
+                lvr,
+                settlement_date,
+                repayment_date,
+                discharged
             FROM clean_lending_activity
             WHERE broker IS NOT NULL
+              AND TRIM(broker) <> ''
               AND broker NOT ILIKE '%not disclosed%'
               AND broker NOT ILIKE '%no broker%'
               AND broker NOT ILIKE '%direct%'
+              AND settlement_date IS NOT NULL
+              AND repayment_date IS NOT NULL
               AND lvr > 0
-            GROUP BY broker
-        ),
-        norm AS (
-            SELECT
-                broker,
-                deals,
-                total_principal,
-                avg_lvr,
-                avg_rate,
-                LOG(total_principal + 1) / NULLIF(MAX(LOG(total_principal + 1)) OVER(), 0) AS n_principal,
-                deals * 1.0 / NULLIF(MAX(deals) OVER(), 0) AS n_deals,
-                avg_lvr / NULLIF(MAX(avg_lvr) OVER(), 0) AS n_lvr,
-                avg_rate / NULLIF(MAX(avg_rate) OVER(), 0) AS n_rate
-            FROM base
-        )
-            SELECT
-                broker,
-                deals,
-                total_principal,
-                avg_lvr,
-                avg_rate,
-                (
-                    (
-                        0.35 * COALESCE(n_principal, 0) +
-                        0.25 * COALESCE(n_deals, 0) -
-                        0.25 * COALESCE(n_lvr, 0) -
-                        0.15 * COALESCE(n_rate, 0)
-                    ) * 100
-                ) AS score,
-                CASE
-                    WHEN (
-                        (
-                            0.35 * COALESCE(n_principal, 0) +
-                            0.25 * COALESCE(n_deals, 0) -
-                            0.25 * COALESCE(n_lvr, 0) -
-                            0.15 * COALESCE(n_rate, 0)
-                        ) * 100
-                    ) >= 45 THEN 'A'
-                    WHEN (
-                        (
-                            0.35 * COALESCE(n_principal, 0) +
-                            0.25 * COALESCE(n_deals, 0) -
-                            0.25 * COALESCE(n_lvr, 0) -
-                            0.15 * COALESCE(n_rate, 0)
-                        ) * 100
-                    ) >= 30 THEN 'B'
-                    WHEN (
-                        (
-                            0.35 * COALESCE(n_principal, 0) +
-                            0.25 * COALESCE(n_deals, 0) -
-                            0.25 * COALESCE(n_lvr, 0) -
-                            0.15 * COALESCE(n_rate, 0)
-                        ) * 100
-                    ) >= 15 THEN 'C'
-                    ELSE 'D'
-                END AS grade
-            FROM norm
-            ORDER BY score DESC;
-        """)
+        """
 
-        rows = cur.fetchall()
+        df = pd.read_sql(query, conn)
+
+        if df.empty:
+            return jsonify([])
+
+        # 模型打分：每笔贷款预测逾期概率
+        df = score_loans(df)
+
+        # 真实逾期标签
+        df["repayment_date"] = pd.to_datetime(df["repayment_date"], errors="coerce")
+        df["discharged"] = pd.to_datetime(df["discharged"], errors="coerce")
+
+        today = pd.Timestamp.today().normalize()
+        df["overdue_flag"] = (
+            df["discharged"].isna() &
+            (df["repayment_date"] < today)
+        ).astype(int)
+
+        # 聚合成 broker 风险
+        broker_df = (
+            df.groupby("broker")
+            .agg(
+                deals=("broker", "size"),
+                principal=("principal_amount", "sum"),
+                lvr=("lvr", "mean"),
+                rate=("rate", "mean"),
+                overdue_rate=("overdue_flag", "mean"),
+                score=("pred_prob", "mean")
+            )
+            .reset_index()
+        )
+
+        # 转百分制
+        broker_df["score"] = (broker_df["score"] * 100).round(1)
+        broker_df["overdue_rate"] = (broker_df["overdue_rate"] * 100).round(1)
+
+        # 风险等级
+        def risk_level(x):
+            if x >= 75:
+                return "High Risk"
+            elif x >= 50:
+                return "Elevated Risk"
+            elif x >= 25:
+                return "Moderate Risk"
+            return "Low Risk"
+
+        broker_df["grade"] = broker_df["score"].apply(risk_level)
+
+        broker_df = broker_df.sort_values("score", ascending=False)
 
         return jsonify([
             {
-                "broker": r[0],
-                "deals": int(r[1] or 0),
-                "principal": float(r[2] or 0),
-                "lvr": float(r[3] or 0),
-                "rate": float(r[4] or 0),
-                "score": float(r[5] or 0),
-                "grade": r[6]
+                "broker": row["broker"],
+                "deals": int(row["deals"]) if pd.notna(row["deals"]) else 0,
+                "principal": float(row["principal"]) if pd.notna(row["principal"]) else 0,
+                "lvr": float(row["lvr"]) if pd.notna(row["lvr"]) else 0,
+                "rate": float(row["rate"]) if pd.notna(row["rate"]) else 0,
+                "overdue_rate": float(row["overdue_rate"]) if pd.notna(row["overdue_rate"]) else 0,
+                "score": float(row["score"]) if pd.notna(row["score"]) else 0,
+                "grade": row["grade"]
             }
-            for r in rows
+            for _, row in broker_df.iterrows()
         ])
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
     finally:
-        cur.close()
         conn.close()
 
 def top_lenders():

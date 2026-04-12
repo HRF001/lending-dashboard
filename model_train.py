@@ -1,11 +1,7 @@
-import os
 import pickle
-from typing import Tuple
-
 import numpy as np
 import pandas as pd
 import psycopg2
-from psycopg2.extras import RealDictCursor
 
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
@@ -14,9 +10,6 @@ from sklearn.metrics import classification_report, roc_auc_score
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
-
-
-MODEL_PATH = "loan_risk_model.pkl"
 
 
 def get_conn():
@@ -29,162 +22,84 @@ def get_conn():
     )
 
 
-def load_training_data() -> pd.DataFrame:
-    """
-    从数据库加载训练数据。
-    这里默认你的表已经有这些字段：
-    - principal_amount
-    - lvr
-    - rate
-    - settlement_date
-    - repayment_date
-    - discharged
-
-    如果你库里还是原始 Excel 名字，就把 SQL 里的列名改成你的真实字段名。
-    """
-    sql = """
+def load_data():
+    query = """
         SELECT
+            broker,
+            priority_level,
             principal_amount,
-            lvr,
             rate,
+            lvr,
             settlement_date,
             repayment_date,
             discharged
         FROM clean_lending_activity
-        WHERE settlement_date IS NOT NULL
+        WHERE broker IS NOT NULL
+          AND TRIM(broker) <> ''
+          AND settlement_date IS NOT NULL
           AND repayment_date IS NOT NULL
     """
 
     conn = get_conn()
     try:
-        df = pd.read_sql(sql, conn)
+        df = pd.read_sql(query, conn)
     finally:
         conn.close()
 
     return df
 
 
-def build_features(df: pd.DataFrame) -> pd.DataFrame:
+def preprocess(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
+
+    priority_map = {
+        "First": 1,
+        "Second": 2,
+        "Third": 3,
+        "Fourth": 4
+    }
+
+    df["priority_level"] = df["priority_level"].map(priority_map)
 
     df["settlement_date"] = pd.to_datetime(df["settlement_date"], errors="coerce")
     df["repayment_date"] = pd.to_datetime(df["repayment_date"], errors="coerce")
     df["discharged"] = pd.to_datetime(df["discharged"], errors="coerce")
 
     # 贷款期限
-    # df["loan_term_days"] = (df["repayment_date"] - df["settlement_date"]).dt.days
+    df["loan_term"] = (df["repayment_date"] - df["settlement_date"]).dt.days
 
-    # 金额取 log，减少极端值影响
-    df["log_principal"] = (df["principal_amount"].fillna(0) + 1).apply(lambda x: np.log(x))
+    # 金额取 log，避免极端值影响
+    df["log_principal"] = np.log(df["principal_amount"].fillna(0) + 1)
 
-    # 逾期标签：
-    # 已经过了 repayment_date，且还没 discharged，记为 1
+    # 逾期标签：到期且未 discharged
     today = pd.Timestamp.today().normalize()
     df["overdue_flag"] = (
         df["discharged"].isna() &
         (df["repayment_date"] < today)
     ).astype(int)
 
+    # 基本过滤
+    df = df[df["loan_term"].notna()]
+    df = df[df["loan_term"] >= 0]
+
     return df
 
 
-def prepare_xy(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series]:
-    feature_cols = ["lvr", "rate", "log_principal"]
-    target_col = "overdue_flag"
+def train_model(df: pd.DataFrame):
+    features = [
+        "priority_level",
+        "rate",
+        "lvr",
+        "loan_term",
+        "log_principal"
+    ]
+    target = "overdue_flag"
 
-    model_df = df[feature_cols + [target_col]].copy()
-
-    # 去掉完全无效的行
-    model_df = model_df.dropna(subset=[target_col])
-
-    X = model_df[feature_cols]
-    y = model_df[target_col]
-
-    return X, y
-
-
-def train_model(X: pd.DataFrame, y: pd.Series) -> Pipeline:
-    numeric_features = ["lvr", "rate", "log_principal"]
-
-    numeric_transformer = Pipeline(steps=[
-        ("imputer", SimpleImputer(strategy="median")),
-        ("scaler", StandardScaler()),
-    ])
-
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ("num", numeric_transformer, numeric_features),
-        ]
-    )
-
-    model = LogisticRegression(
-        max_iter=1000,
-        class_weight="balanced",
-        random_state=42,
-    )
-
-    clf = Pipeline(steps=[
-        ("preprocessor", preprocessor),
-        ("model", model),
-    ])
-
-    clf.fit(X, y)
-    return clf
-
-
-def evaluate_model(model: Pipeline, X_test: pd.DataFrame, y_test: pd.Series) -> None:
-    y_pred = model.predict(X_test)
-    y_prob = model.predict_proba(X_test)[:, 1]
-
-    print("\n=== Classification Report ===")
-    print(classification_report(y_test, y_pred, digits=4))
-
-    try:
-        auc = roc_auc_score(y_test, y_prob)
-        print(f"AUC: {auc:.4f}")
-    except ValueError:
-        print("AUC 无法计算，可能测试集只有一个类别。")
-
-
-def print_feature_weights(model: Pipeline) -> None:
-    """
-    打印 Logistic Regression 的系数，作为“数据学出来的权重参考”。
-    注意：这是标准化后的系数，适合比较相对重要性。
-    """
-    feature_names = ["lvr", "rate", "log_principal"]
-    lr = model.named_steps["model"]
-    coefs = lr.coef_[0]
-
-    coef_df = pd.DataFrame({
-        "feature": feature_names,
-        "coefficient": coefs,
-        "abs_coefficient": abs(coefs),
-    }).sort_values("abs_coefficient", ascending=False)
-
-    print("\n=== Learned Coefficients ===")
-    print(coef_df[["feature", "coefficient"]].to_string(index=False))
-
-    coef_df["weight_pct"] = coef_df["abs_coefficient"] / coef_df["abs_coefficient"].sum()
-    print("\n=== Relative Weight Approximation ===")
-    print(coef_df[["feature", "weight_pct"]].to_string(index=False))
-
-
-def save_model(model: Pipeline, path: str = MODEL_PATH) -> None:
-    with open(path, "wb") as f:
-        pickle.dump(model, f)
-
-
-def main():
-    df = load_training_data()
-    df = build_features(df)
-
-    X, y = prepare_xy(df)
+    X = df[features]
+    y = df[target]
 
     if y.nunique() < 2:
-        raise ValueError("当前 overdue_flag 只有一个类别，无法训练分类模型。请先检查数据。")
-
-    print(f"样本数: {len(X)}")
-    print(f"逾期比例: {y.mean():.4f}")
+        raise ValueError("overdue_flag 只有一个类别，没法训练模型，请检查数据。")
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y,
@@ -193,12 +108,104 @@ def main():
         stratify=y
     )
 
-    model = train_model(X_train, y_train)
-    evaluate_model(model, X_test, y_test)
-    print_feature_weights(model)
+    numeric_transformer = Pipeline(steps=[
+        ("imputer", SimpleImputer(strategy="median")),
+        ("scaler", StandardScaler())
+    ])
+
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ("num", numeric_transformer, features)
+        ]
+    )
+
+    model = Pipeline(steps=[
+        ("preprocessor", preprocessor),
+        ("clf", LogisticRegression(max_iter=1000, class_weight="balanced"))
+    ])
+
+    model.fit(X_train, y_train)
+
+    y_pred = model.predict(X_test)
+    y_prob = model.predict_proba(X_test)[:, 1]
+
+    print("=== Classification Report ===")
+    print(classification_report(y_test, y_pred, digits=4))
+
+    print("=== AUC ===")
+    print(round(roc_auc_score(y_test, y_prob), 4))
+
+    # 输出系数
+    clf = model.named_steps["clf"]
+    coef_df = pd.DataFrame({
+        "feature": features,
+        "coefficient": clf.coef_[0]
+    }).sort_values("coefficient", ascending=False)
+
+    print("\n=== Feature Coefficients ===")
+    print(coef_df.to_string(index=False))
+
+    return model, features
+
+
+def build_broker_risk(df: pd.DataFrame, model, features):
+    df = df.copy()
+
+    df["pred_prob"] = model.predict_proba(df[features])[:, 1]
+
+    broker_risk = (
+        df.groupby("broker")
+        .agg(
+            deals=("broker", "size"),
+            avg_pred_risk=("pred_prob", "mean"),
+            total_principal=("principal_amount", "sum"),
+            avg_lvr=("lvr", "mean"),
+            avg_rate=("rate", "mean"),
+            overdue_rate=("overdue_flag", "mean")
+        )
+        .reset_index()
+    )
+
+    broker_risk["risk_score"] = (broker_risk["avg_pred_risk"] * 100).round(1)
+
+    broker_risk["risk_level"] = pd.cut(
+        broker_risk["avg_pred_risk"],
+        bins=[-0.01, 0.25, 0.5, 0.75, 1.0],
+        labels=["Low Risk", "Moderate Risk", "Elevated Risk", "High Risk"]
+    )
+
+    broker_risk = broker_risk.sort_values("avg_pred_risk", ascending=False)
+
+    return broker_risk
+
+
+def save_model(model, path="loan_risk_model.pkl"):
+    with open(path, "wb") as f:
+        pickle.dump(model, f)
+
+
+def main():
+    df = load_data()
+    df = preprocess(df)
+
+    print("样本数:", len(df))
+    print("逾期率:", round(df["overdue_flag"].mean(), 4))
+
+    model, features = train_model(df)
     save_model(model)
 
-    print(f"\n模型已保存到: {os.path.abspath(MODEL_PATH)}")
+    broker_risk = build_broker_risk(df, model, features)
+
+    print("\n=== Top 20 Broker Risk ===")
+    print(
+        broker_risk[
+            ["broker", "deals", "risk_score", "risk_level", "overdue_rate", "avg_lvr", "avg_rate"]
+        ].head(20).to_string(index=False)
+    )
+
+    broker_risk.to_csv("broker_risk_scores.csv", index=False)
+    print("\n已保存：broker_risk_scores.csv")
+    print("已保存模型：loan_risk_model.pkl")
 
 
 if __name__ == "__main__":

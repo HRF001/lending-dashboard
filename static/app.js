@@ -33,14 +33,14 @@ function renderRiskTable(data) {
     table.innerHTML = "";
 
     if (!Array.isArray(data)) {
-        table.innerHTML = `<tr><td colspan="7">加载失败：${data.error || "未知错误"}</td></tr>`;
+        table.innerHTML = `<tr><td colspan="8">加载失败：${data.error || "未知错误"}</td></tr>`;
         return;
     }
 
     data.forEach(b => {
         let scoreClass = "score-low";
-        if (b.score >= 45) scoreClass = "score-high";
-        else if (b.score >= 30) scoreClass = "score-mid";
+        if (b.score >= 75) scoreClass = "score-high";
+        else if (b.score >= 50) scoreClass = "score-mid";
 
         table.innerHTML += `
             <tr>
@@ -49,6 +49,7 @@ function renderRiskTable(data) {
                 <td>${formatNumber(b.principal)}</td>
                 <td>${formatDecimal(b.lvr, 2)}</td>
                 <td>${formatDecimal(b.rate, 2)}</td>
+                <td>${formatDecimal(b.overdue_rate, 1)}%</td>
                 <td class="${scoreClass}">${formatDecimal(b.score, 1)}</td>
                 <td><strong>${b.grade ?? "-"}</strong></td>
             </tr>

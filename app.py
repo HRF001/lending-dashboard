@@ -156,8 +156,7 @@ def broker_risk():
                     ELSE 'D'
                 END AS grade
             FROM norm
-            ORDER BY score DESC
-            LIMIT 20;
+            ORDER BY score DESC;
         """)
 
         rows = cur.fetchall()
@@ -287,8 +286,7 @@ def lender_risk_score():
                 END AS category
 
             FROM scored
-            ORDER BY score DESC
-            LIMIT 20;
+            ORDER BY score DESC;
         """)
         rows = cur.fetchall()
 

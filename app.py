@@ -26,7 +26,8 @@ def get_conn():
         user="postgres",       # 改成你的
         password="1"      # 改成你的
     )
-"""   
+"""
+   
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -56,6 +57,43 @@ def overview():
         cur.close()
         conn.close()
 
+@app.route("/api/security-type")
+def security_type():
+    conn = get_conn()
+    cur = conn.cursor()
+
+    try:
+        cur.execute("""
+            SELECT
+                CASE
+                    WHEN security_type ILIKE '%Residential%' THEN 'Residential'
+                    WHEN security_type ILIKE '%Vacant%' THEN 'Vacant Land'
+                    WHEN security_type ILIKE '%Commercial%' THEN 'Commercial'
+                    WHEN security_type ILIKE '%Industrial%' THEN 'Industrial'
+                    WHEN security_type ILIKE '%Rural%' THEN 'Rural'
+                    ELSE 'Other'
+                END AS type,
+                COUNT(*) AS count
+            FROM clean_lending_activity
+            WHERE security_type IS NOT NULL
+            AND TRIM(security_type) <> ''
+            GROUP BY type
+            ORDER BY count DESC
+        """)
+
+        rows = cur.fetchall()
+
+        return jsonify([
+            {
+                "type": r[0],
+                "count": int(r[1])
+            }
+            for r in rows
+        ])
+    finally:
+        cur.close()
+        conn.close()
+        
 @app.route("/api/top-brokers")
 def top_brokers():
     conn = get_conn()

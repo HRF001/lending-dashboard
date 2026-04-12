@@ -117,7 +117,20 @@ function renderMarketChart(data) {
             }]
         },
         options: {
-            responsive: true
+            maintainAspectRatio: false, 
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: "right",
+                    labels: {
+                        font: {
+                            size: 18   // 👈 调大（可以试 14 / 16 / 18）
+                        },
+                        boxWidth: 30,   // 👈 颜色块变大
+                        padding: 15     // 👈 每一行间距
+                    }   // 👈 不要放 top，会挤
+            }
+        }
         }
     });
 }
@@ -201,6 +214,40 @@ async function refreshData() {
     }
 }
 
+async function loadSecurityChart() {
+    const res = await fetch("/api/security-type");
+    const data = await res.json();
+
+    const labels = data.map(d => d.type);
+    const values = data.map(d => d.count);
+
+    new Chart(document.getElementById("securityChart"), {
+        type: "pie",
+        data: {
+            labels: labels,
+            datasets: [{
+                data: values
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false, 
+            plugins: {
+                legend: {
+                    position: "right",
+                    labels: {
+                        font: {
+                            size: 18   // 👈 调大（可以试 14 / 16 / 18）
+                        },
+                        boxWidth: 30,   // 👈 颜色块变大
+                        padding: 15     // 👈 每一行间距
+                    }
+                }
+            }
+        }
+    });
+}
+
 async function loadPartnerRisk() {
     const statusEl = document.getElementById("partnerRiskStatus");
     const tbody = document.querySelector("#partnerRiskTable tbody");
@@ -272,4 +319,5 @@ function renderGradeBadge(grade) {
 document.addEventListener("DOMContentLoaded", () => {
     refreshData();
     loadPartnerRisk();   
+    loadSecurityChart();
 });

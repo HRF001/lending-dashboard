@@ -70,30 +70,30 @@ function renderTopLenders(data) {
     });
 }
 
-function renderLenderRiskTable(data) {
+function renderLenderAggressivenessTable(data) {
     const tableBody = document.getElementById("lenderRiskTable");
     tableBody.innerHTML = "";
 
     if (!Array.isArray(data)) {
-        tableBody.innerHTML = `<tr><td colspan="7">加载失败</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="9">加载失败：${data.error || "未知错误"}</td></tr>`;
         return;
     }
 
     data.forEach(item => {
-        let scoreClass = "score-low";
-        if (item.score >= 45) scoreClass = "score-high";
-        else if (item.score >= 30) scoreClass = "score-mid";
-
         const row = document.createElement("tr");
+
         row.innerHTML = `
             <td>${item.lender ?? "-"}</td>
             <td>${item.deals ?? "-"}</td>
-            <td>${formatNumber(item.principal)}</td>
-            <td>${formatDecimal(item.lvr, 2)}</td>
-            <td>${formatDecimal(item.rate, 2)}</td>
-            <td class="${scoreClass}">${formatDecimal(item.score, 1)}</td>
-            <td><strong>${item.grade ?? "-"}</strong></td>
+            <td>${Number(item.principal).toLocaleString()}</td>
+            <td>${Number(item.lvr).toFixed(2)}</td>
+            <td>${Number(item.rate).toFixed(2)}</td>
+            <td>${Number(item.term).toFixed(0)}</td>
+            <td>${Number(item.second_share).toFixed(1)}%</td>
+            <td>${Number(item.score).toFixed(1)}</td>
+            <td>${item.grade ?? "-"}</td>
         `;
+
         tableBody.appendChild(row);
     });
 }
@@ -175,7 +175,7 @@ async function refreshData() {
             fetch("/api/top-brokers"),
             fetch("/api/broker-risk"),
             fetch("/api/top-lenders"),
-            fetch("/api/lender-risk")
+            fetch("/api/lender-aggressiveness")
         ]);
 
         const overview = await overviewRes.json();
@@ -190,7 +190,7 @@ async function refreshData() {
         renderTopBrokers(brokers);
         renderRiskTable(brokerRisk);
         renderTopLenders(lenders);
-        renderLenderRiskTable(lenderRisk);
+        renderLenderAggressivenessTable(lenderRisk);
         renderMarketChart(market);
         renderTrendChart(trend);
 

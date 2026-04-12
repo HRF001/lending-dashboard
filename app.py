@@ -4,6 +4,8 @@ import subprocess
 import os
 import pandas as pd
 from model_predict import score_loans
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
 
 app = Flask(__name__)
 
@@ -15,7 +17,16 @@ def get_conn():
         user=os.environ["PGUSER"],
         password=os.environ["PGPASSWORD"]
     )
-
+"""
+def get_conn():
+    return psycopg2.connect(
+        host="localhost",
+        port=5433,
+        dbname="lending_db",     # 改成你的
+        user="postgres",       # 改成你的
+        password="1"      # 改成你的
+    )
+"""    
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -209,108 +220,120 @@ def top_lenders():
             cur.close()
             conn.close()
 
-def lender_risk_score():
+@app.route("/api/lender-aggressiveness")
+def lender_aggressiveness():
     conn = get_conn()
-    cur = conn.cursor()
 
     try:
-        cur.execute("""
-            WITH base AS (
-                SELECT
-                    lender,
-                    COUNT(*) AS deals,
-                    SUM(principal_amount) AS total_principal,
-                    AVG(lvr) AS avg_lvr,
-                    AVG(rate) AS avg_rate
-                FROM clean_lending_activity
-                WHERE lender IS NOT NULL
-                AND TRIM(lender) <> ''
-                AND lvr > 0
-                AND lender NOT ILIKE '%privacy%'
-                AND lender NOT ILIKE '%investor owned by broker%'
-                GROUP BY lender
-                HAVING COUNT(*) >= 5
-            ),
-
-            norm AS (
-                SELECT
-                    lender,
-                    deals,
-                    total_principal,
-                    avg_lvr,
-                    avg_rate,
-
-                    -- 标准化
-                    avg_lvr / NULLIF(MAX(avg_lvr) OVER(), 0) AS n_lvr,
-                    avg_rate / NULLIF(MAX(avg_rate) OVER(), 0) AS n_rate,
-                    LOG(total_principal + 1) / NULLIF(MAX(LOG(total_principal + 1)) OVER(), 0) AS n_principal,
-                    deals * 1.0 / NULLIF(MAX(deals) OVER(), 0) AS n_deals
-
-                FROM base
-            ),
-
-            scored AS (
-                SELECT
-                    lender,
-                    deals,
-                    total_principal,
-                    avg_lvr,
-                    avg_rate,
-
-                    ROUND((
-                        0.35 * n_lvr +
-                        0.25 * n_rate +
-                        0.25 * n_principal +
-                        0.15 * n_deals
-                    ) * 100, 1) AS score
-
-                FROM norm
-            )
-
+        query = """
             SELECT
                 lender,
-                deals,
-                total_principal,
-                avg_lvr,
-                avg_rate,
-                score,
+                COUNT(*) AS deals,
+                SUM(principal_amount) AS total_principal,
+                AVG(lvr) AS avg_lvr,
+                AVG(rate) AS avg_rate,
+                AVG(
+                    EXTRACT(DAY FROM (repayment_date::timestamp - settlement_date::timestamp))
+                ) AS avg_term,
+                AVG(
+                    CASE
+                        WHEN LOWER(TRIM(priority_level)) = 'second' THEN 1.0
+                        ELSE 0.0
+                    END
+                ) AS second_share
+            FROM clean_lending_activity
+            WHERE lender IS NOT NULL
+              AND TRIM(lender) <> ''
+              AND lvr > 0
+              AND settlement_date IS NOT NULL
+              AND repayment_date IS NOT NULL
+              AND lender NOT ILIKE '%privacy%'
+              AND lender NOT ILIKE '%investor owned by broker%'
+            GROUP BY lender
+            HAVING COUNT(*) >= 5
+        """
 
-                CASE
-                    WHEN score >= 75 THEN 'Very Aggressive'
-                    WHEN score >= 60 THEN 'Aggressive'
-                    WHEN score >= 45 THEN 'Moderate'
-                    ELSE 'Conservative'
-                END AS category
+        df = pd.read_sql(query, conn)
 
-            FROM scored
-            ORDER BY score DESC;
-        """)
-        rows = cur.fetchall()
+        if df.empty:
+            return jsonify([])
 
-        results = []
-        for row in rows:
-            results.append({
-                "lender": row[0],
-                "deals": row[1],
-                "principal": float(row[2]) if row[2] is not None else 0,
-                "lvr": float(row[3]) if row[3] is not None else 0,
-                "rate": float(row[4]) if row[4] is not None else 0,
-                "score": float(row[5]) if row[5] is not None else 0,
-                "grade": row[6]
-            })
-        return results
+        feature_cols = ["avg_lvr", "avg_rate", "avg_term", "second_share"]
+        X = df[feature_cols].fillna(0).copy()
+
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+
+        kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
+        df["cluster"] = kmeans.fit_predict(X_scaled)
+
+        centers = pd.DataFrame(
+            scaler.inverse_transform(kmeans.cluster_centers_),
+            columns=feature_cols
+        )
+        centers["cluster"] = range(3)
+
+        # 用聚类中心给 cluster 贴标签
+        centers["aggressiveness_proxy"] = (
+            0.35 * centers["avg_lvr"] +
+            0.25 * centers["avg_rate"] +
+            0.20 * centers["second_share"] +
+            0.20 * (1 / (centers["avg_term"] + 1))
+        )
+
+        centers = centers.sort_values("aggressiveness_proxy").reset_index(drop=True)
+
+        label_map = {
+            int(centers.iloc[0]["cluster"]): "Conservative",
+            int(centers.iloc[1]["cluster"]): "Balanced",
+            int(centers.iloc[2]["cluster"]): "Aggressive",
+        }
+
+        df["level"] = df["cluster"].map(label_map)
+
+        # 连续分数：每个 lender 自己算，不再用 cluster 统一打分
+        df["raw_score"] = (
+            0.35 * df["avg_lvr"] +
+            0.25 * df["avg_rate"] +
+            0.20 * df["second_share"] +
+            0.20 * (1 / (df["avg_term"] + 1))
+        )
+
+        if df["raw_score"].max() > df["raw_score"].min():
+            df["score"] = (
+                (df["raw_score"] - df["raw_score"].min()) /
+                (df["raw_score"].max() - df["raw_score"].min()) * 100
+            ).round(1)
+        else:
+            df["score"] = 50.0
+
+        df = df.sort_values(["score", "avg_lvr", "avg_rate"], ascending=False)
+
+        return jsonify([
+            {
+                "lender": row["lender"],
+                "deals": int(row["deals"]) if pd.notna(row["deals"]) else 0,
+                "principal": float(row["total_principal"]) if pd.notna(row["total_principal"]) else 0,
+                "lvr": float(row["avg_lvr"]) if pd.notna(row["avg_lvr"]) else 0,
+                "rate": float(row["avg_rate"]) if pd.notna(row["avg_rate"]) else 0,
+                "term": float(row["avg_term"]) if pd.notna(row["avg_term"]) else 0,
+                "second_share": float(row["second_share"] * 100) if pd.notna(row["second_share"]) else 0,
+                "score": float(row["score"]) if pd.notna(row["score"]) else 0,
+                "grade": row["level"]
+            }
+            for _, row in df.iterrows()
+        ])
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
     finally:
-        cur.close()
         conn.close()
         
 @app.route("/api/top-lenders")
 def api_top_lenders():
     return jsonify(top_lenders())
 
-@app.route("/api/lender-risk")
-def api_lender_risk():
-    return jsonify(lender_risk_score())
 
 def partner_score_analysis(conn):
     sql = """

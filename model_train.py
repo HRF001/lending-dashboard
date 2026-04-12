@@ -179,7 +179,7 @@ def build_broker_risk(df: pd.DataFrame, model, features):
     return broker_risk
 
 
-def save_model(model, path="loan_risk_model.pkl"):
+def save_model(model, path="broker_risk_model.pkl"):
     with open(path, "wb") as f:
         pickle.dump(model, f)
 
@@ -205,7 +205,7 @@ def main():
 
     broker_risk.to_csv("broker_risk_scores.csv", index=False)
     print("\n已保存：broker_risk_scores.csv")
-    print("已保存模型：loan_risk_model.pkl")
+    print("已保存模型：broker_risk_model.pkl")
 
 
 if __name__ == "__main__":

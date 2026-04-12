@@ -15,7 +15,7 @@ def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
     df["repayment_date"] = pd.to_datetime(df["repayment_date"], errors="coerce")
     df["discharged"] = pd.to_datetime(df["discharged"], errors="coerce")
 
-    df["loan_term_days"] = (df["repayment_date"] - df["settlement_date"]).dt.days
+    df["loan_term"] = (df["repayment_date"] - df["settlement_date"]).dt.days
     df["log_principal"] = np.log(df["principal_amount"].fillna(0) + 1)
 
     if "priority_level" in df.columns and df["priority_level"].dtype == object:

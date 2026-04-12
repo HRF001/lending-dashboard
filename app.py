@@ -353,11 +353,16 @@ def partner_score_analysis(conn):
     return pd.read_sql(sql, conn)
 
 @app.route("/api/partner-risk")
-def partner_risk():
+def api_partner_risk():
     conn = get_conn()
-    df = partner_score_analysis(conn)
-    conn.close()
-    return df.to_json(orient="records")
+    try:
+        df = partner_score_analysis(conn)
+        return jsonify(df.to_dict(orient="records"))
+    except Exception as e:
+        print("Partner risk error:", e)
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
 
 @app.route("/api/market-structure")
 def market_structure():

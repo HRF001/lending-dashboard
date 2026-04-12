@@ -198,36 +198,35 @@ async function loadPartnerRisk() {
 
     try {
         const response = await fetch("/api/partner-risk");
-
-        if (!response.ok) {
-            throw new Error(`HTTP error: ${response.status}`);
-        }
-
         const data = await response.json();
 
-        if (!data || data.length === 0) {
+        console.log("partner risk response:", data);
+
+        if (!response.ok) {
+            throw new Error(data.error || `HTTP ${response.status}`);
+        }
+
+        if (!Array.isArray(data) || data.length === 0) {
             statusEl.textContent = "No partner risk data found.";
             return;
         }
 
         data.forEach(row => {
             const tr = document.createElement("tr");
-
             tr.innerHTML = `
                 <td>${row.partner ?? ""}</td>
                 <td>${row.deals ?? ""}</td>
-                <td>${formatPercent(row.overdue_rate)}</td>
+                <td>${(Number(row.overdue_rate) * 100).toFixed(2)}%</td>
                 <td>${row.score ?? ""}</td>
-                <td>${renderGradeBadge(row.grade ?? "")}</td>
+                <td>${row.grade ?? ""}</td>
             `;
-
             tbody.appendChild(tr);
         });
 
         statusEl.textContent = `Loaded ${data.length} partners`;
     } catch (error) {
-        console.error(error);
-        statusEl.textContent = "Failed to load partner risk data.";
+        console.error("Partner risk load error:", error);
+        statusEl.textContent = "Failed to load partner risk data: " + error.message;
     }
 }
 

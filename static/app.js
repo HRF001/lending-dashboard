@@ -258,4 +258,7 @@ function renderGradeBadge(grade) {
     ">${grade}</span>`;
 }
 
-document.addEventListener("DOMContentLoaded", refreshData);
+document.addEventListener("DOMContentLoaded", () => {
+    refreshData();
+    loadPartnerRisk();   
+});

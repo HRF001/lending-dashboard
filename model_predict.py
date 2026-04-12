@@ -18,7 +18,7 @@ def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
     df["loan_term"] = (df["repayment_date"] - df["settlement_date"]).dt.days
     df["log_principal"] = np.log(df["principal_amount"].fillna(0) + 1)
 
-    if "priority_level" in df.columns and df["priority_level"].dtype == object:
+    if "priority_level" in df.columns:
         priority_map = {
             "first": 1,
             "second": 2,

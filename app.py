@@ -352,7 +352,7 @@ def partner_score_analysis(conn):
     """
     return pd.read_sql(sql, conn)
 
-@app.route("/partner-risk")
+@app.route("/api/partner-risk")
 def partner_risk():
     conn = get_conn()
     df = partner_score_analysis(conn)

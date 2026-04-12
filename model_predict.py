@@ -20,10 +20,10 @@ def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
 
     if "priority_level" in df.columns and df["priority_level"].dtype == object:
         priority_map = {
-            "First": 1,
-            "Second": 2,
-            "Third": 3,
-            "Fourth": 4
+            "first": 1,
+            "second": 2,
+            "third": 3,
+            "fourth": 4
         }
         df["priority_level"] = (
         df["priority_level"]

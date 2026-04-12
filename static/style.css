@@ -148,8 +148,8 @@ ul {
 
 /* 👇关键：给表格区域固定高度 */
 .table-wrap {
-    max-height: 700px;     /* 你可以改 250 / 350 */
-    overflow-y: auto;      /* 纵向滚动 */
+    max-height: 700px;     
+    overflow-y: auto;      
     overflow-x: auto;
 }
 

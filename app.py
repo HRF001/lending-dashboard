@@ -22,9 +22,9 @@ def get_conn():
     return psycopg2.connect(
         host="localhost",
         port=5433,
-        dbname="lending_db",     # 改成你的
-        user="postgres",       # 改成你的
-        password="1"      # 改成你的
+        dbname="lending_db",    
+        user="postgres",       
+        password="1"      
     )
 """
    
@@ -404,7 +404,7 @@ def partner_score_analysis(conn):
             ELSE 'D'
         END AS grade
     FROM partner_base
-    ORDER BY overdue_rate ASC, deals ASC
+    ORDER BY overdue_rate ASC, deals DESC
     """
     return pd.read_sql(sql, conn)
 

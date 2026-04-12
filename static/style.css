@@ -91,3 +91,39 @@ th {
 ul {
     padding-left: 20px;
 }
+
+.two-columns {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+}
+
+.column {
+    flex: 1;
+    min-width: 0;
+}
+
+.column-title {
+    margin-bottom: 10px;
+}
+
+.table-wrap {
+    overflow-x: auto;
+}
+
+.table-wrap table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.table-wrap th,
+.table-wrap td {
+    white-space: nowrap;
+}
+
+/* 手机适配 */
+@media (max-width: 900px) {
+    .two-columns {
+        flex-direction: column;
+    }
+}

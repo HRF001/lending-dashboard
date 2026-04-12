@@ -214,7 +214,7 @@ async function loadPartnerRisk() {
         data.forEach(row => {
             const tr = document.createElement("tr");
             tr.innerHTML = `
-                <td>${row.partner ?? ""}</td>
+                <td>${row.partner_name ?? ""}</td>
                 <td>${row.deals ?? ""}</td>
                 <td>${(Number(row.overdue_rate) * 100).toFixed(2)}%</td>
                 <td>${row.score ?? ""}</td>

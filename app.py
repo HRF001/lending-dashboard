@@ -348,7 +348,7 @@ def partner_score_analysis(conn):
             ELSE 'D'
         END AS grade
     FROM partner_base
-    ORDER BY overdue_rate DESC, deals DESC
+    ORDER BY overdue_rate ASC, deals ASC
     """
     return pd.read_sql(sql, conn)
 

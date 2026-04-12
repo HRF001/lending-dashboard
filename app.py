@@ -321,7 +321,7 @@ def partner_score_analysis(conn):
     sql = """
     WITH partner_base AS (
         SELECT
-            partner,
+            partner_name,
             COUNT(*) AS deals,
             AVG(
                 CASE
@@ -331,13 +331,13 @@ def partner_score_analysis(conn):
                 END
             ) AS overdue_rate
         FROM clean_lending_activity
-        WHERE partner IS NOT NULL
-          AND partner <> ''
-        GROUP BY partner
+        WHERE partner_name IS NOT NULL
+          AND partner_name <> ''
+        GROUP BY partner_name
         HAVING COUNT(*) >= 20
     )
     SELECT
-        partner,
+        partner_name,
         deals,
         ROUND(overdue_rate::numeric, 4) AS overdue_rate,
         ROUND(((1 - overdue_rate) * 100)::numeric, 2) AS score,

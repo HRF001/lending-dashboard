@@ -25,7 +25,13 @@ def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
             "Third": 3,
             "Fourth": 4
         }
-        df["priority_level"] = df["priority_level"].map(priority_map)
+        df["priority_level"] = (
+        df["priority_level"]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .map(priority_map)
+)
 
     return df
 

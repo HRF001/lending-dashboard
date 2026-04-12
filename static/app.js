@@ -132,16 +132,27 @@ function renderTrendChart(data) {
     }
 
     trendChartInstance = new Chart(ctx, {
-        type: "line",
+        type: "bar",
         data: {
             labels: labels,
             datasets: [{
-                label: "Principal",
+                label: "Monthly Principal",
                 data: values
             }]
         },
         options: {
-            responsive: true
+            responsive: true,
+            scales: {
+                x: {
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 45
+                    }
+                },
+                y: {
+                    beginAtZero: true
+                }
+            }
         }
     });
 }

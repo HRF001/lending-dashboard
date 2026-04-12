@@ -406,20 +406,20 @@ def trend():
     try:
         cur.execute("""
             SELECT
-                settlement_date,
+                TO_CHAR(DATE_TRUNC('month', settlement_date), 'YYYY-MM') AS month,
                 COUNT(*) AS deals,
                 SUM(principal_amount) AS total_principal
             FROM clean_lending_activity
             WHERE settlement_date IS NOT NULL
-            GROUP BY settlement_date
-            ORDER BY settlement_date
+            GROUP BY DATE_TRUNC('month', settlement_date)
+            ORDER BY DATE_TRUNC('month', settlement_date)
         """)
 
         rows = cur.fetchall()
 
         return jsonify([
             {
-                "date": str(r[0]),
+                "date": r[0],
                 "deals": int(r[1] or 0),
                 "principal": float(r[2] or 0)
             }
@@ -428,7 +428,7 @@ def trend():
     finally:
         cur.close()
         conn.close()
-
+        
 @app.route("/api/refresh")
 def refresh():
     try:

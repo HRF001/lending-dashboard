@@ -189,4 +189,73 @@ async function refreshData() {
     }
 }
 
+async function loadPartnerRisk() {
+    const statusEl = document.getElementById("partnerRiskStatus");
+    const tbody = document.querySelector("#partnerRiskTable tbody");
+
+    statusEl.textContent = "Loading...";
+    tbody.innerHTML = "";
+
+    try {
+        const response = await fetch("/api/partner-risk");
+
+        if (!response.ok) {
+            throw new Error(`HTTP error: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (!data || data.length === 0) {
+            statusEl.textContent = "No partner risk data found.";
+            return;
+        }
+
+        data.forEach(row => {
+            const tr = document.createElement("tr");
+
+            tr.innerHTML = `
+                <td>${row.partner ?? ""}</td>
+                <td>${row.deals ?? ""}</td>
+                <td>${formatPercent(row.overdue_rate)}</td>
+                <td>${row.score ?? ""}</td>
+                <td>${renderGradeBadge(row.grade ?? "")}</td>
+            `;
+
+            tbody.appendChild(tr);
+        });
+
+        statusEl.textContent = `Loaded ${data.length} partners`;
+    } catch (error) {
+        console.error(error);
+        statusEl.textContent = "Failed to load partner risk data.";
+    }
+}
+
+function formatPercent(value) {
+    if (value === null || value === undefined || value === "") {
+        return "";
+    }
+    return (Number(value) * 100).toFixed(2) + "%";
+}
+
+function renderGradeBadge(grade) {
+    let color = "#999";
+
+    if (grade === "A") color = "#2e7d32";
+    else if (grade === "B") color = "#1565c0";
+    else if (grade === "C") color = "#ef6c00";
+    else if (grade === "D") color = "#c62828";
+
+    return `<span style="
+        display:inline-block;
+        min-width:32px;
+        text-align:center;
+        padding:4px 8px;
+        border-radius:12px;
+        color:white;
+        background:${color};
+        font-weight:bold;
+    ">${grade}</span>`;
+}
+
 document.addEventListener("DOMContentLoaded", refreshData);

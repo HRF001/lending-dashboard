@@ -2,6 +2,7 @@ from flask import Flask, render_template, jsonify
 import psycopg2
 import subprocess
 import os
+import pandas as pd
 
 app = Flask(__name__)
 
@@ -121,35 +122,35 @@ def broker_risk():
                 avg_rate,
                 (
                     (
-                        0.40 * COALESCE(n_principal, 0) +
-                        0.30 * COALESCE(n_deals, 0) -
-                        0.20 * COALESCE(n_lvr, 0) -
-                        0.10 * COALESCE(n_rate, 0)
+                        0.35 * COALESCE(n_principal, 0) +
+                        0.25 * COALESCE(n_deals, 0) -
+                        0.25 * COALESCE(n_lvr, 0) -
+                        0.15 * COALESCE(n_rate, 0)
                     ) * 100
                 ) AS score,
                 CASE
                     WHEN (
                         (
-                            0.40 * COALESCE(n_principal, 0) +
-                            0.30 * COALESCE(n_deals, 0) -
-                            0.20 * COALESCE(n_lvr, 0) -
-                            0.10 * COALESCE(n_rate, 0)
+                            0.35 * COALESCE(n_principal, 0) +
+                            0.25 * COALESCE(n_deals, 0) -
+                            0.25 * COALESCE(n_lvr, 0) -
+                            0.15 * COALESCE(n_rate, 0)
                         ) * 100
                     ) >= 45 THEN 'A'
                     WHEN (
                         (
-                            0.40 * COALESCE(n_principal, 0) +
-                            0.30 * COALESCE(n_deals, 0) -
-                            0.20 * COALESCE(n_lvr, 0) -
-                            0.10 * COALESCE(n_rate, 0)
+                            0.35 * COALESCE(n_principal, 0) +
+                            0.25 * COALESCE(n_deals, 0) -
+                            0.25 * COALESCE(n_lvr, 0) -
+                            0.15 * COALESCE(n_rate, 0)
                         ) * 100
                     ) >= 30 THEN 'B'
                     WHEN (
                         (
-                            0.40 * COALESCE(n_principal, 0) +
-                            0.30 * COALESCE(n_deals, 0) -
-                            0.20 * COALESCE(n_lvr, 0) -
-                            0.10 * COALESCE(n_rate, 0)
+                            0.35 * COALESCE(n_principal, 0) +
+                            0.25 * COALESCE(n_deals, 0) -
+                            0.25 * COALESCE(n_lvr, 0) -
+                            0.15 * COALESCE(n_rate, 0)
                         ) * 100
                     ) >= 15 THEN 'C'
                     ELSE 'D'
@@ -315,6 +316,48 @@ def api_top_lenders():
 @app.route("/api/lender-risk")
 def api_lender_risk():
     return jsonify(lender_risk_score())
+
+def partner_score_analysis(conn):
+    sql = """
+    WITH partner_base AS (
+        SELECT
+            partner,
+            COUNT(*) AS deals,
+            AVG(
+                CASE
+                    WHEN discharged IS NULL
+                     AND repayment_date < CURRENT_DATE
+                    THEN 1.0 ELSE 0.0
+                END
+            ) AS overdue_rate
+        FROM clean_lending_activity
+        WHERE partner IS NOT NULL
+          AND partner <> ''
+        GROUP BY partner
+        HAVING COUNT(*) >= 20
+    )
+    SELECT
+        partner,
+        deals,
+        ROUND(overdue_rate::numeric, 4) AS overdue_rate,
+        ROUND(((1 - overdue_rate) * 100)::numeric, 2) AS score,
+        CASE
+            WHEN (1 - overdue_rate) * 100 >= 80 THEN 'A'
+            WHEN (1 - overdue_rate) * 100 >= 65 THEN 'B'
+            WHEN (1 - overdue_rate) * 100 >= 50 THEN 'C'
+            ELSE 'D'
+        END AS grade
+    FROM partner_base
+    ORDER BY overdue_rate DESC, deals DESC
+    """
+    return pd.read_sql(sql, conn)
+
+@app.route("/partner-risk")
+def partner_risk():
+    conn = get_conn()
+    df = partner_score_analysis(conn)
+    conn.close()
+    return df.to_json(orient="records")
 
 @app.route("/api/market-structure")
 def market_structure():

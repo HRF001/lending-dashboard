@@ -85,6 +85,29 @@
                 <tbody id="lenderRiskTable"></tbody>
             </table>
         </section>
+
+        <section class="panel">
+            <h2>Partner Risk Analysis</h2>
+            <button onclick="loadPartnerRisk()">Load Partner Risk</button>
+
+            <div id="partnerRiskStatus" style="margin: 10px 0;"></div>
+
+            <div style="overflow-x:auto;">
+                <table id="partnerRiskTable" border="1" cellpadding="8" cellspacing="0" style="width:100%; border-collapse: collapse;">
+                    <thead>
+                        <tr>
+                            <th>Partner</th>
+                            <th>Deals</th>
+                            <th>Overdue Rate</th>
+                            <th>Score</th>
+                            <th>Grade</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+        </section>
     </div>
 
     <script src="/static/app.js"></script>

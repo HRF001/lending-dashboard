@@ -2,55 +2,116 @@
 
 {% block content %}
 <section class="story-section">
-    <div class="section-heading">
-        <span class="section-kicker">Layer 3</span>
-        <h2>Lender Analysis</h2>
-        <p>
-            This page shows lender scale, lending style, and how aggressively each lender
-            tends to structure deals.
-        </p>
+    <div class="section-heading section-heading-action">
+        <div>
+            <h2>Lender Analysis</h2>
+            <p>
+                Select a lender to inspect their historical lending activity, then review their
+                aggressiveness and structure profile below.
+            </p>
+        </div>
+        <button class="inline-action" onclick="refreshData()">Refresh Data</button>
     </div>
 
-    <div class="content-grid">
+    <div class="detail-layout">
         <section class="panel list-panel">
             <div class="panel-header">
                 <h3>All Lenders</h3>
-                <p>Full lender list ranked by principal deployed.</p>
-            </div>
-            <ul id="lenderList" class="entity-list"></ul>
-        </section>
-
-        <section class="panel table-panel">
-            <div class="panel-header">
-                <h3>Lender Aggressiveness</h3>
-                <p>Cluster-driven view of conservative, balanced, and aggressive lender profiles.</p>
+                <p>Click a lender to load their full lending history.</p>
             </div>
             <input
-                id="lenderRiskSearch"
+                id="lenderListSearch"
                 class="table-search"
                 type="search"
-                placeholder="Search lender name"
-                oninput="filterTableRows('lenderRiskSearch', 'lenderRiskTable', 0)"
+                placeholder="Search lenders"
+                oninput="filterEntityList('lenderListSearch', 'lenderList')"
             >
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th class="sortable" data-table="lender" data-column="lender" data-type="text">Lender</th>
-                            <th class="sortable" data-table="lender" data-column="deals" data-type="number">Deals</th>
-                            <th class="sortable" data-table="lender" data-column="principal" data-type="number">Principal</th>
-                            <th class="sortable" data-table="lender" data-column="lvr" data-type="number">LVR</th>
-                            <th class="sortable" data-table="lender" data-column="rate" data-type="number">Rate</th>
-                            <th class="sortable" data-table="lender" data-column="term" data-type="number">Avg Term</th>
-                            <th class="sortable" data-table="lender" data-column="second_share" data-type="number">Second %</th>
-                            <th class="sortable" data-table="lender" data-column="score" data-type="number">Score</th>
-                            <th class="sortable" data-table="lender" data-column="grade" data-type="text">Level</th>
-                        </tr>
-                    </thead>
-                    <tbody id="lenderRiskTable"></tbody>
-                </table>
-            </div>
+            <div id="lenderList" class="entity-list entity-list-clickable"></div>
         </section>
+
+        <div class="detail-stack">
+            <section class="panel detail-panel">
+                <div class="panel-header">
+                    <h3 id="lenderDetailTitle">Lender History</h3>
+                    <p id="lenderDetailSubtitle">Select a lender from the left to load their transactions.</p>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th class="sortable" data-table="lender-history" data-column="matter_no" data-type="text">Matter No.</th>
+                                <th class="sortable" data-table="lender-history" data-column="counterparty" data-type="text">Broker</th>
+                                <th class="sortable" data-table="lender-history" data-column="principal" data-type="number">Principal</th>
+                                <th class="sortable" data-table="lender-history" data-column="rate" data-type="number">Rate</th>
+                                <th class="sortable" data-table="lender-history" data-column="lvr" data-type="number">LVR</th>
+                                <th class="sortable" data-table="lender-history" data-column="security_type" data-type="text">Security</th>
+                                <th class="sortable" data-table="lender-history" data-column="settlement_date" data-type="date">Settlement</th>
+                                <th class="sortable" data-table="lender-history" data-column="repayment_date" data-type="date">Repayment</th>
+                                <th class="sortable" data-table="lender-history" data-column="status" data-type="text">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="lenderHistoryTable"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="panel table-panel">
+                <div class="panel-header">
+                    <h3>Lender Risk Snapshot</h3>
+                    <p>The selected lender's aggressiveness profile and structure score.</p>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Lender</th>
+                                <th>Deals</th>
+                                <th>Principal</th>
+                                <th>LVR</th>
+                                <th>Rate</th>
+                                <th>Avg Term</th>
+                                <th>Second %</th>
+                                <th>Score</th>
+                                <th>Level</th>
+                            </tr>
+                        </thead>
+                        <tbody id="lenderSnapshotTable"></tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
     </div>
+
+    <section class="panel table-panel ranking-panel">
+        <div class="panel-header">
+            <h3>Lender Ranking</h3>
+            <p>Full lender ranking table across the cleaned lending dataset.</p>
+            <p>
+                Score logic: lenders are first grouped with KMeans clustering using average LVR, average rate,
+                average loan term, and second-mortgage share. The displayed Score is then a continuous 0-100
+                aggressiveness index built from those same features, where higher scores indicate more
+                aggressive lending structure. Level is mapped from the clustering result as Aggressive,
+                Balanced, or Conservative.
+            </p>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="sortable" data-table="lender-ranking" data-column="lender" data-type="text">Lender</th>
+                        <th class="sortable" data-table="lender-ranking" data-column="deals" data-type="number">Deals</th>
+                        <th class="sortable" data-table="lender-ranking" data-column="principal" data-type="number">Principal</th>
+                        <th class="sortable" data-table="lender-ranking" data-column="lvr" data-type="number">LVR</th>
+                        <th class="sortable" data-table="lender-ranking" data-column="rate" data-type="number">Rate</th>
+                        <th class="sortable" data-table="lender-ranking" data-column="term" data-type="number">Avg Term</th>
+                        <th class="sortable" data-table="lender-ranking" data-column="second_share" data-type="number">Second %</th>
+                        <th class="sortable" data-table="lender-ranking" data-column="score" data-type="number">Score</th>
+                        <th class="sortable" data-table="lender-ranking" data-column="grade" data-type="text">Level</th>
+                    </tr>
+                </thead>
+                <tbody id="lenderRankingTable"></tbody>
+            </table>
+        </div>
+    </section>
 </section>
 {% endblock %}

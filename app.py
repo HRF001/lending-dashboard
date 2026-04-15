@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 import psycopg2
 import subprocess
 import os
@@ -9,11 +9,27 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
 from db_config import get_db_config
+from feature_utils import compute_overdue_flag
 
 app = Flask(__name__)
 
+DEDUPED_LOANS_CTE = """
+WITH deduped_loans AS (
+    SELECT DISTINCT ON (matter_no, settlement_date, principal_amount)
+        *
+    FROM clean_lending_activity
+    ORDER BY matter_no, settlement_date, principal_amount, source_file DESC
+)
+"""
+
 def get_conn():
     return psycopg2.connect(**get_db_config())
+
+
+def clean_name(value):
+    if value is None:
+        return ""
+    return str(value).strip()
    
 @app.route("/")
 def index():
@@ -21,7 +37,7 @@ def index():
         "overview.html",
         page="overview",
         title="Data & Market | Lending Dashboard",
-        hero_title="Data Scale & Market Structure",
+        hero_title="Mortgage Market Analysis",
         hero_text="Start with the size, composition, and market shape of the lending dataset.",
     )
 
@@ -32,7 +48,7 @@ def brokers_page():
         "brokers.html",
         page="brokers",
         title="Broker Analysis | Lending Dashboard",
-        hero_title="Broker Analysis",
+        hero_title="Mortgage Market Analysis",
         hero_text="Review broker contribution, concentration, and modeled portfolio risk.",
     )
 
@@ -43,7 +59,7 @@ def lenders_page():
         "lenders.html",
         page="lenders",
         title="Lender Analysis | Lending Dashboard",
-        hero_title="Lender Analysis",
+        hero_title="Mortgage Market Analysis",
         hero_text="Compare lender scale, lending style, and aggressiveness across the market.",
     )
 
@@ -54,7 +70,7 @@ def lawyers_page():
         "lawyers.html",
         page="lawyers",
         title="Lawyer Analysis | Lending Dashboard",
-        hero_title="Lawyer Analysis",
+        hero_title="Mortgage Market Analysis",
         hero_text="Track lawyer execution quality through overdue outcomes and operating scores.",
     )
 
@@ -126,12 +142,12 @@ def top_brokers():
     cur = conn.cursor()
 
     try:
-        cur.execute("""
+        cur.execute(DEDUPED_LOANS_CTE + """
             SELECT
                 broker,
                 COUNT(*) AS deals,
                 SUM(principal_amount) AS total_principal
-            FROM clean_lending_activity
+            FROM deduped_loans
             WHERE broker IS NOT NULL
               AND broker NOT ILIKE '%not disclosed%'
               AND broker NOT ILIKE '%no broker%'
@@ -154,12 +170,61 @@ def top_brokers():
         cur.close()
         conn.close()
 
+
+@app.route("/api/broker-history")
+def broker_history():
+    broker_name = clean_name(request.args.get("broker"))
+    if not broker_name:
+        return jsonify([])
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    try:
+        cur.execute(
+            DEDUPED_LOANS_CTE + """
+            SELECT
+                matter_no,
+                lender,
+                principal_amount,
+                rate,
+                lvr,
+                security_type,
+                settlement_date,
+                repayment_date,
+                status
+            FROM deduped_loans
+            WHERE broker = %s
+            ORDER BY settlement_date DESC NULLS LAST, matter_no DESC
+            """,
+            (broker_name,)
+        )
+
+        rows = cur.fetchall()
+        return jsonify([
+            {
+                "matter_no": r[0],
+                "counterparty": r[1],
+                "principal": float(r[2] or 0),
+                "rate": float(r[3] or 0),
+                "lvr": float(r[4] or 0),
+                "security_type": r[5],
+                "settlement_date": r[6].isoformat() if r[6] else None,
+                "repayment_date": r[7].isoformat() if r[7] else None,
+                "status": r[8],
+            }
+            for r in rows
+        ])
+    finally:
+        cur.close()
+        conn.close()
+
 @app.route("/api/broker-risk")
 def broker_risk():
     conn = get_conn()
 
     try:
-        query = """
+        query = DEDUPED_LOANS_CTE + """
             SELECT
                 broker,
                 priority_level,
@@ -168,8 +233,9 @@ def broker_risk():
                 lvr,
                 settlement_date,
                 repayment_date,
+                status,
                 discharged
-            FROM clean_lending_activity
+            FROM deduped_loans
             WHERE broker IS NOT NULL
               AND TRIM(broker) <> ''
               AND broker NOT ILIKE '%not disclosed%'
@@ -188,15 +254,8 @@ def broker_risk():
         # 模型打分：每笔贷款预测逾期概率
         df = score_loans(df)
 
-        # 真实逾期标签
-        df["repayment_date"] = pd.to_datetime(df["repayment_date"], errors="coerce")
-        df["discharged"] = pd.to_datetime(df["discharged"], errors="coerce")
-
-        today = pd.Timestamp.today().normalize()
-        df["overdue_flag"] = (
-            df["discharged"].isna() &
-            (df["repayment_date"] < today)
-        ).astype(int)
+        # 真实逾期标签：优先看 status，discharged 日期做辅助
+        df["overdue_flag"] = compute_overdue_flag(df)
 
         # 聚合成 broker 风险
         broker_df = (
@@ -255,12 +314,12 @@ def top_lenders():
         cur = conn.cursor()
 
         try:
-            cur.execute("""
+            cur.execute(DEDUPED_LOANS_CTE + """
                 SELECT
                     lender,
                     COUNT(*) AS deals,
                     SUM(principal_amount) AS total_principal
-                FROM clean_lending_activity
+                FROM deduped_loans
                 WHERE lender IS NOT NULL
                 AND lender <> 'Privacy Settings Engaged'
                 AND TRIM(lender) <> ''
@@ -287,7 +346,7 @@ def lender_aggressiveness():
     conn = get_conn()
 
     try:
-        query = """
+        query = DEDUPED_LOANS_CTE + """
             SELECT
                 lender,
                 COUNT(*) AS deals,
@@ -303,7 +362,7 @@ def lender_aggressiveness():
                         ELSE 0.0
                     END
                 ) AS second_share
-            FROM clean_lending_activity
+            FROM deduped_loans
             WHERE lender IS NOT NULL
               AND TRIM(lender) <> ''
               AND lvr > 0
@@ -404,9 +463,58 @@ def api_top_lenders():
     return jsonify(top_lenders())
 
 
+@app.route("/api/lender-history")
+def lender_history():
+    lender_name = clean_name(request.args.get("lender"))
+    if not lender_name:
+        return jsonify([])
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    try:
+        cur.execute(
+            DEDUPED_LOANS_CTE + """
+            SELECT
+                matter_no,
+                broker,
+                principal_amount,
+                rate,
+                lvr,
+                security_type,
+                settlement_date,
+                repayment_date,
+                status
+            FROM deduped_loans
+            WHERE lender = %s
+            ORDER BY settlement_date DESC NULLS LAST, matter_no DESC
+            """,
+            (lender_name,)
+        )
+
+        rows = cur.fetchall()
+        return jsonify([
+            {
+                "matter_no": r[0],
+                "counterparty": r[1],
+                "principal": float(r[2] or 0),
+                "rate": float(r[3] or 0),
+                "lvr": float(r[4] or 0),
+                "security_type": r[5],
+                "settlement_date": r[6].isoformat() if r[6] else None,
+                "repayment_date": r[7].isoformat() if r[7] else None,
+                "status": r[8],
+            }
+            for r in rows
+        ])
+    finally:
+        cur.close()
+        conn.close()
+
+
 def partner_score_analysis(conn):
-    sql = """
-    WITH partner_base AS (
+    sql = DEDUPED_LOANS_CTE + """
+    , partner_base AS (
         SELECT
             partner_name,
             COUNT(*) AS deals,
@@ -417,7 +525,7 @@ def partner_score_analysis(conn):
                     THEN 1.0 ELSE 0.0
                 END
             ) AS overdue_rate
-        FROM clean_lending_activity
+        FROM deduped_loans
         WHERE partner_name IS NOT NULL
           AND partner_name <> ''
         GROUP BY partner_name
@@ -438,6 +546,87 @@ def partner_score_analysis(conn):
     ORDER BY overdue_rate ASC, deals DESC
     """
     return pd.read_sql(sql, conn)
+
+
+@app.route("/api/all-lawyers")
+def api_all_lawyers():
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            DEDUPED_LOANS_CTE + """
+            SELECT
+                partner_name,
+                COUNT(*) AS deals,
+                SUM(principal_amount) AS total_principal
+            FROM deduped_loans
+            WHERE partner_name IS NOT NULL
+              AND TRIM(partner_name) <> ''
+            GROUP BY partner_name
+            ORDER BY total_principal DESC NULLS LAST, partner_name
+            """
+        )
+
+        rows = cur.fetchall()
+        return jsonify([
+            {
+                "lawyer": r[0],
+                "deals": int(r[1] or 0),
+                "principal": float(r[2] or 0),
+            }
+            for r in rows
+        ])
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/lawyer-history")
+def lawyer_history():
+    lawyer_name = clean_name(request.args.get("lawyer"))
+    if not lawyer_name:
+        return jsonify([])
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            DEDUPED_LOANS_CTE + """
+            SELECT
+                matter_no,
+                broker,
+                lender,
+                principal_amount,
+                rate,
+                lvr,
+                settlement_date,
+                repayment_date,
+                status
+            FROM deduped_loans
+            WHERE partner_name = %s
+            ORDER BY settlement_date DESC NULLS LAST, matter_no DESC
+            """,
+            (lawyer_name,)
+        )
+
+        rows = cur.fetchall()
+        return jsonify([
+            {
+                "matter_no": r[0],
+                "broker": r[1],
+                "lender": r[2],
+                "principal": float(r[3] or 0),
+                "rate": float(r[4] or 0),
+                "lvr": float(r[5] or 0),
+                "settlement_date": r[6].isoformat() if r[6] else None,
+                "repayment_date": r[7].isoformat() if r[7] else None,
+                "status": r[8],
+            }
+            for r in rows
+        ])
+    finally:
+        cur.close()
+        conn.close()
 
 @app.route("/api/partner-risk")
 def api_partner_risk():
@@ -482,6 +671,40 @@ def market_structure():
                 "principal": float(r[2] or 0)
             }
             for r in rows
+        ])
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/lender-market-structure")
+def lender_market_structure():
+    conn = get_conn()
+    cur = conn.cursor()
+
+    try:
+        cur.execute(DEDUPED_LOANS_CTE + """
+            SELECT
+                CASE
+                    WHEN lender ILIKE '%investor owned by broker%' THEN 'Investor owned by Broker'
+                    WHEN lender ILIKE '%privacy settings engaged%' THEN 'Privacy Settings Engaged'
+                    ELSE 'Lender'
+                END AS lender_type,
+                SUM(principal_amount) AS total_principal
+            FROM deduped_loans
+            WHERE lender IS NOT NULL
+              AND TRIM(lender) <> ''
+            GROUP BY lender_type
+            ORDER BY total_principal DESC
+        """)
+
+        rows = cur.fetchall()
+        return jsonify([
+            {
+                "type": row[0],
+                "principal": float(row[1] or 0)
+            }
+            for row in rows
         ])
     finally:
         cur.close()

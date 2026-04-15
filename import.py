@@ -193,6 +193,20 @@ def clean_priority(value):
     return PRIORITY_MAP.get(text.lower())
 
 
+def apply_row_specific_fixes(cleaned: dict) -> dict:
+    # Preserve raw matter numbers generally, but fix the known duplicated loan
+    # where the same record appears once with a leading zero.
+    if (
+        cleaned.get("matter_no") == "0268235"
+        and cleaned.get("lender") == "Peter Arnold, GAP Business Loans"
+        and cleaned.get("principal_amount") == Decimal("4550000")
+        and cleaned.get("settlement_date")
+        and cleaned.get("repayment_date")
+    ):
+        cleaned["matter_no"] = "268235"
+    return cleaned
+
+
 def rename_columns(df: pd.DataFrame) -> pd.DataFrame:
     renamed = {}
     for col in df.columns:
@@ -227,7 +241,7 @@ def clean_row(row) -> dict:
         else:
             cleaned[field] = value
 
-    return cleaned
+    return apply_row_specific_fixes(cleaned)
 
 
 def validate_row(cleaned: dict):
@@ -343,6 +357,7 @@ def insert_clean_rows(cursor, source_file: str, sheet_name: str, df: pd.DataFram
             continue
 
         try:
+            cursor.execute("SAVEPOINT clean_row_insert")
             cursor.execute(
                 """
                 INSERT INTO clean_lending_activity (
@@ -375,12 +390,42 @@ def insert_clean_rows(cursor, source_file: str, sheet_name: str, df: pd.DataFram
                     review_of_solicitor_by_lender,
                     shortfall_amount
                 )
-                VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                )
-                ON CONFLICT (source_file, matter_no, settlement_date, principal_amount)
-                DO NOTHING;
+                SELECT
+                    %s::text,
+                    %s::text,
+                    %s::text,
+                    %s::text,
+                    %s::text,
+                    %s::text,
+                    %s::numeric,
+                    %s::numeric,
+                    %s::numeric,
+                    %s::numeric,
+                    %s::numeric,
+                    %s::text,
+                    %s::text,
+                    %s::text,
+                    %s::text,
+                    %s::text,
+                    %s::date,
+                    %s::date,
+                    %s::date,
+                    %s::numeric,
+                    %s::text,
+                    %s::numeric,
+                    %s::text,
+                    %s::numeric,
+                    %s::text,
+                    %s::numeric,
+                    %s::text,
+                    %s::numeric
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM clean_lending_activity existing
+                    WHERE existing.matter_no = %s
+                      AND existing.settlement_date = %s
+                      AND existing.principal_amount = %s
+                );
                 """,
                 (
                     source_file,
@@ -411,10 +456,18 @@ def insert_clean_rows(cursor, source_file: str, sheet_name: str, df: pd.DataFram
                     cleaned["solicitor_earned_from_lender"],
                     cleaned["review_of_solicitor_by_lender"],
                     cleaned["shortfall_amount"],
+                    cleaned["matter_no"],
+                    cleaned["settlement_date"],
+                    cleaned["principal_amount"],
                 ),
             )
-            inserted += 1
+            if cursor.rowcount == 1:
+                inserted += 1
+            else:
+                skipped += 1
+            cursor.execute("RELEASE SAVEPOINT clean_row_insert")
         except Exception as exc:
+            cursor.execute("ROLLBACK TO SAVEPOINT clean_row_insert")
             failed += 1
             issue_log.append(
                 Issue(

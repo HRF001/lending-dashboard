@@ -2,13 +2,15 @@
 
 {% block content %}
 <section class="story-section">
-    <div class="section-heading">
-        <span class="section-kicker">Layer 1</span>
-        <h2>Data Scale & Market Structure</h2>
-        <p>
-            This page introduces the size of the dataset, overall market footprint,
-            and the structural split between broker-led and direct lending.
-        </p>
+    <div class="section-heading section-heading-action">
+        <div>
+            <h2>Data Scale & Market Structure</h2>
+            <p>
+                This page introduces the size of the dataset, overall market footprint,
+                and the structural split between broker-led and direct lending.
+            </p>
+        </div>
+        <button class="inline-action" onclick="refreshData()">Refresh Data</button>
     </div>
 
     <section class="cards">
@@ -17,23 +19,39 @@
             <div class="value" id="totalDeals">-</div>
         </div>
         <div class="card metric-card">
-            <div class="label">Total Principal</div>
+            <div class="label">Total Principal (Million AUD)</div>
             <div class="value" id="totalPrincipal">-</div>
         </div>
         <div class="card metric-card">
-            <div class="label">Average Principal</div>
+            <div class="label">Average Principal (Million AUD)</div>
             <div class="value" id="avgPrincipal">-</div>
         </div>
     </section>
 
-    <section class="insight-grid">
+    <section class="overview-chart-grid">
         <div class="panel chart-panel">
             <div class="panel-header">
                 <h3>Broker Market Structure</h3>
                 <p>How the market splits across broker-driven and direct origination.</p>
             </div>
-            <div class="chart-frame">
-                <canvas id="marketChart"></canvas>
+            <div class="chart-frame chart-frame-split">
+                <div class="chart-canvas-wrap">
+                    <canvas id="marketChart"></canvas>
+                </div>
+                <div id="marketLegend" class="chart-legend-list"></div>
+            </div>
+        </div>
+
+        <div class="panel chart-panel">
+            <div class="panel-header">
+                <h3>Lender Market Structure</h3>
+                <p>How total principal is distributed across the leading lenders.</p>
+            </div>
+            <div class="chart-frame chart-frame-split">
+                <div class="chart-canvas-wrap">
+                    <canvas id="lenderMarketChart"></canvas>
+                </div>
+                <div id="lenderLegend" class="chart-legend-list chart-legend-tight-left"></div>
             </div>
         </div>
 
@@ -42,8 +60,11 @@
                 <h3>Security Type Distribution</h3>
                 <p>The asset mix behind the lending book.</p>
             </div>
-            <div class="chart-frame">
-                <canvas id="securityChart"></canvas>
+            <div class="chart-frame chart-frame-split">
+                <div class="chart-canvas-wrap">
+                    <canvas id="securityChart"></canvas>
+                </div>
+                <div id="securityLegend" class="chart-legend-grid chart-legend-tight-left"></div>
             </div>
         </div>
     </section>

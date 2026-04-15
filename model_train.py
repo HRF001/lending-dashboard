@@ -11,7 +11,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from db_config import get_db_config
-from feature_utils import prepare_loan_features
+from feature_utils import compute_overdue_flag, prepare_loan_features
 
 
 def get_conn():
@@ -28,6 +28,7 @@ def load_data():
             lvr,
             settlement_date,
             repayment_date,
+            status,
             discharged
         FROM clean_lending_activity
         WHERE broker IS NOT NULL
@@ -48,12 +49,8 @@ def load_data():
 def preprocess(df: pd.DataFrame) -> pd.DataFrame:
     df = prepare_loan_features(df)
 
-    # 逾期标签：到期且未 discharged
-    today = pd.Timestamp.today().normalize()
-    df["overdue_flag"] = (
-        df["discharged"].isna() &
-        (df["repayment_date"] < today)
-    ).astype(int)
+    # 逾期标签：到期且未关闭，优先看 status，discharged 日期做辅助
+    df["overdue_flag"] = compute_overdue_flag(df)
 
     # 基本过滤
     df = df[df["loan_term"].notna()]

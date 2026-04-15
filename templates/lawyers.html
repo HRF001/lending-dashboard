@@ -2,44 +2,106 @@
 
 {% block content %}
 <section class="story-section">
-    <div class="section-heading">
-        <span class="section-kicker">Layer 4</span>
-        <h2>Lawyer Analysis</h2>
-        <p>
-            This page highlights lawyer execution quality by tracking overdue outcomes
-            and converting them into a simple operating score.
-        </p>
+    <div class="section-heading section-heading-action">
+        <div>
+            <h2>Lawyer Analysis</h2>
+            <p>
+                Select a lawyer to review their historical matters, then compare their operating
+                score and overdue performance underneath.
+            </p>
+        </div>
+        <button class="inline-action" onclick="refreshData()">Refresh Data</button>
     </div>
 
-    <section class="panel table-panel">
-        <div class="panel-header">
-            <div>
-                <h3>Lawyer Risk Analysis</h3>
-                <p>Performance view of lawyers involved in the lending process.</p>
+    <div class="detail-layout">
+        <section class="panel list-panel">
+            <div class="panel-header">
+                <h3>All Lawyers</h3>
+                <p>Click a lawyer to load their full matter history.</p>
             </div>
+            <input
+                id="lawyerListSearch"
+                class="table-search"
+                type="search"
+                placeholder="Search lawyers"
+                oninput="filterEntityList('lawyerListSearch', 'lawyerList')"
+            >
+            <div id="lawyerList" class="entity-list entity-list-clickable"></div>
+        </section>
+
+        <div class="detail-stack">
+            <section class="panel detail-panel">
+                <div class="panel-header">
+                    <h3 id="lawyerDetailTitle">Lawyer History</h3>
+                    <p id="lawyerDetailSubtitle">Select a lawyer from the left to load their matters.</p>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th class="sortable" data-table="lawyer-history" data-column="matter_no" data-type="text">Matter No.</th>
+                                <th class="sortable" data-table="lawyer-history" data-column="broker" data-type="text">Broker</th>
+                                <th class="sortable" data-table="lawyer-history" data-column="lender" data-type="text">Lender</th>
+                                <th class="sortable" data-table="lawyer-history" data-column="principal" data-type="number">Principal</th>
+                                <th class="sortable" data-table="lawyer-history" data-column="rate" data-type="number">Rate</th>
+                                <th class="sortable" data-table="lawyer-history" data-column="lvr" data-type="number">LVR</th>
+                                <th class="sortable" data-table="lawyer-history" data-column="settlement_date" data-type="date">Settlement</th>
+                                <th class="sortable" data-table="lawyer-history" data-column="repayment_date" data-type="date">Repayment</th>
+                                <th class="sortable" data-table="lawyer-history" data-column="status" data-type="text">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="lawyerHistoryTable"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="panel table-panel">
+                <div class="panel-header">
+                    <h3>Lawyer Score Snapshot</h3>
+                    <p>The selected lawyer's score, grade, and overdue profile.</p>
+                </div>
+                <div id="partnerRiskStatus" class="status-text"></div>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Lawyer</th>
+                                <th>Deals</th>
+                                <th>Overdue Rate</th>
+                                <th>Score</th>
+                                <th>Grade</th>
+                            </tr>
+                        </thead>
+                        <tbody id="lawyerSnapshotTable"></tbody>
+                    </table>
+                </div>
+            </section>
         </div>
+    </div>
 
-        <div id="partnerRiskStatus" class="status-text"></div>
-        <input
-            id="lawyerRiskSearch"
-            class="table-search"
-            type="search"
-            placeholder="Search lawyer name"
-            oninput="filterTableRows('lawyerRiskSearch', 'partnerRiskTableBody', 0)"
-        >
-
+    <section class="panel table-panel ranking-panel">
+        <div class="panel-header">
+            <h3>Lawyer Ranking</h3>
+            <p>Full lawyer ranking table across the cleaned lending dataset.</p>
+            <p>
+                Score logic: this page uses a rule-based score rather than a machine learning model. Overdue Rate
+                is the share of that lawyer's matters that are past repayment and still not closed. Score is
+                calculated as (1 - overdue rate) x 100, so higher is better. Grade is assigned as A (>=80),
+                B (>=65), C (>=50), or D.
+            </p>
+        </div>
         <div class="table-wrap">
-            <table id="partnerRiskTable">
+            <table>
                 <thead>
                     <tr>
-                        <th class="sortable" data-table="lawyer" data-column="partner_name" data-type="text">Lawyer</th>
-                        <th class="sortable" data-table="lawyer" data-column="deals" data-type="number">Deals</th>
-                        <th class="sortable" data-table="lawyer" data-column="overdue_rate" data-type="number">Overdue Rate</th>
-                        <th class="sortable" data-table="lawyer" data-column="score" data-type="number">Score</th>
-                        <th class="sortable" data-table="lawyer" data-column="grade" data-type="text">Grade</th>
+                        <th class="sortable" data-table="lawyer-ranking" data-column="partner_name" data-type="text">Lawyer</th>
+                        <th class="sortable" data-table="lawyer-ranking" data-column="deals" data-type="number">Deals</th>
+                        <th class="sortable" data-table="lawyer-ranking" data-column="overdue_rate" data-type="number">Overdue Rate</th>
+                        <th class="sortable" data-table="lawyer-ranking" data-column="score" data-type="number">Score</th>
+                        <th class="sortable" data-table="lawyer-ranking" data-column="grade" data-type="text">Grade</th>
                     </tr>
                 </thead>
-                <tbody id="partnerRiskTableBody"></tbody>
+                <tbody id="lawyerRankingTable"></tbody>
             </table>
         </div>
     </section>

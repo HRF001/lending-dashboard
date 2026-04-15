@@ -1,22 +1,45 @@
 let marketChartInstance = null;
+let lenderMarketChartInstance = null;
 let trendChartInstance = null;
 let securityChartInstance = null;
+
+let brokerListData = [];
 let brokerRiskData = [];
+let brokerHistoryData = [];
+let lenderListData = [];
 let lenderRiskData = [];
+let lenderHistoryData = [];
+let lawyerListData = [];
 let lawyerRiskData = [];
+let lawyerHistoryData = [];
 
 const sortState = {
-    broker: { column: "score", direction: "desc", type: "number" },
-    lender: { column: "score", direction: "desc", type: "number" },
-    lawyer: { column: "score", direction: "desc", type: "number" }
+    "broker-history": { column: "settlement_date", direction: "desc", type: "date" },
+    "broker-ranking": { column: "score", direction: "desc", type: "number" },
+    "lender-history": { column: "settlement_date", direction: "desc", type: "date" },
+    "lender-ranking": { column: "score", direction: "desc", type: "number" },
+    "lawyer-history": { column: "settlement_date", direction: "desc", type: "date" },
+    "lawyer-ranking": { column: "score", direction: "desc", type: "number" }
 };
 
 const chartPalette = {
-    market: ["#0c5c4c", "#3c7c69", "#7ca892", "#b66a2c", "#d4a46c", "#ead6b8"],
-    security: ["#b66a2c", "#d38b47", "#e6b46d", "#0c5c4c", "#4c8978", "#9ab9ab"],
-    trendLine: "#0c5c4c",
-    trendFill: "rgba(12, 92, 76, 0.18)",
+    market: ["#0c5c4c", "#1f7a66", "#69bea0", "#9dd7c3", "#d8efe7", "#eef8f4"],
+    security: ["#0c5c4c", "#1f7a66", "#2f9b7a", "#69bea0", "#9dd7c3", "#d8efe7"],
     trendBorder: "#0f4f43"
+};
+
+const gradeSortOrder = {
+    "high risk": 4,
+    "elevated risk": 3,
+    "moderate risk": 2,
+    "low risk": 1,
+    "aggressive": 3,
+    "balanced": 2,
+    "conservative": 1,
+    "a": 4,
+    "b": 3,
+    "c": 2,
+    "d": 1
 };
 
 function formatNumber(num) {
@@ -26,54 +49,88 @@ function formatNumber(num) {
 
 function formatCompactNumber(num) {
     if (num === null || num === undefined || isNaN(num)) return "-";
-
     const value = Number(num);
-    if (Math.abs(value) >= 1000) {
-        return `${(value / 1000).toFixed(0)}k`;
-    }
+    if (Math.abs(value) >= 1000) return `${(value / 1000).toFixed(0)}k`;
     return formatNumber(value);
 }
 
+function formatMillions(num, digits = 1) {
+    if (num === null || num === undefined || isNaN(num)) return "-";
+    const value = Number(num);
+    return (value / 1000000).toFixed(digits).replace(/\.0+$/, "");
+}
+
 function formatDecimal(num, digits = 2) {
-    if (num === null || num === undefined || isNaN(num)) return "0.00";
+    if (num === null || num === undefined || isNaN(num)) return "-";
     return Number(num).toFixed(digits);
+}
+
+function formatDate(value) {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "-";
+    return date.toLocaleDateString();
 }
 
 function renderOverview(data) {
     document.getElementById("totalDeals").textContent = formatNumber(data.total_deals);
-    document.getElementById("totalPrincipal").textContent = formatNumber(data.total_principal);
-    document.getElementById("avgPrincipal").textContent = formatNumber(data.avg_principal);
+    document.getElementById("totalPrincipal").textContent = formatMillions(data.total_principal, 1);
+    document.getElementById("avgPrincipal").textContent = formatMillions(data.avg_principal, 1);
 }
 
-function renderTopBrokers(data) {
-    const list = document.getElementById("brokerList");
-    list.innerHTML = "";
+function titleCaseLabel(value) {
+    return String(value ?? "")
+        .toLowerCase()
+        .replace(/\b\w/g, char => char.toUpperCase());
+}
 
-    if (!Array.isArray(data) || data.length === 0) {
-        list.innerHTML = "<li>No broker data available.</li>";
-        return;
-    }
+function syncLegendState(containerId, chart) {
+    const legend = document.getElementById(containerId);
+    if (!legend || !chart) return;
 
-    data.forEach(item => {
-        const li = document.createElement("li");
-        li.textContent = `${item.broker} | Deals: ${item.deals} | Principal: ${formatCompactNumber(item.principal ?? item.total)}`;
-        list.appendChild(li);
+    legend.querySelectorAll(".chart-legend-item").forEach(item => {
+        const index = Number(item.dataset.index);
+        item.classList.toggle("is-inactive", !chart.getDataVisibility(index));
     });
 }
 
-function filterTableRows(inputId, tableBodyId, columnIndex = 0) {
-    const input = document.getElementById(inputId);
-    const tbody = document.getElementById(tableBodyId);
+function renderCustomLegend(containerId, labels, colors, chart, mode = "list") {
+    const legend = document.getElementById(containerId);
+    if (!legend) return;
 
-    if (!input || !tbody) return;
+    const baseClass = mode === "grid" ? "chart-legend-grid" : "chart-legend-list";
+    const extraClasses = Array.from(legend.classList).filter(name =>
+        name !== "chart-legend-grid" && name !== "chart-legend-list"
+    );
+    legend.className = [baseClass, ...extraClasses].join(" ");
+    legend.innerHTML = labels.map((label, index) => `
+        <button type="button" class="chart-legend-item" data-index="${index}">
+            <span class="chart-legend-swatch" style="background:${colors[index % colors.length]}"></span>
+            <span class="chart-legend-label">${label}</span>
+        </button>
+    `).join("");
+
+    legend.querySelectorAll(".chart-legend-item").forEach(item => {
+        item.addEventListener("click", () => {
+            const index = Number(item.dataset.index);
+            chart.toggleDataVisibility(index);
+            chart.update();
+            syncLegendState(containerId, chart);
+        });
+    });
+
+    syncLegendState(containerId, chart);
+}
+
+function filterEntityList(inputId, listId) {
+    const input = document.getElementById(inputId);
+    const list = document.getElementById(listId);
+    if (!input || !list) return;
 
     const query = input.value.trim().toLowerCase();
-    const rows = tbody.querySelectorAll("tr");
-
-    rows.forEach(row => {
-        const cells = row.querySelectorAll("td");
-        const text = (cells[columnIndex]?.textContent || "").toLowerCase();
-        row.style.display = text.includes(query) ? "" : "none";
+    list.querySelectorAll(".entity-item").forEach(item => {
+        const text = item.textContent.toLowerCase();
+        item.style.display = text.includes(query) ? "" : "none";
     });
 }
 
@@ -82,16 +139,28 @@ function sortRows(data, config) {
     const multiplier = config.direction === "asc" ? 1 : -1;
 
     rows.sort((a, b) => {
-        const aValue = a?.[config.column];
-        const bValue = b?.[config.column];
+        const left = a?.[config.column];
+        const right = b?.[config.column];
 
         if (config.type === "number") {
-            const left = Number(aValue ?? 0);
-            const right = Number(bValue ?? 0);
-            return (left - right) * multiplier;
+            return (Number(left ?? 0) - Number(right ?? 0)) * multiplier;
         }
 
-        return String(aValue ?? "").localeCompare(String(bValue ?? "")) * multiplier;
+        if (config.type === "date") {
+            const leftTime = left ? new Date(left).getTime() : 0;
+            const rightTime = right ? new Date(right).getTime() : 0;
+            return ((Number.isNaN(leftTime) ? 0 : leftTime) - (Number.isNaN(rightTime) ? 0 : rightTime)) * multiplier;
+        }
+
+        if (config.column === "grade") {
+            const leftRank = gradeSortOrder[String(left ?? "").trim().toLowerCase()] ?? -1;
+            const rightRank = gradeSortOrder[String(right ?? "").trim().toLowerCase()] ?? -1;
+            if (leftRank !== rightRank) {
+                return (leftRank - rightRank) * multiplier;
+            }
+        }
+
+        return String(left ?? "").localeCompare(String(right ?? "")) * multiplier;
     });
 
     return rows;
@@ -100,7 +169,6 @@ function sortRows(data, config) {
 function updateSortHeaders(tableName) {
     document.querySelectorAll(`th.sortable[data-table="${tableName}"]`).forEach(th => {
         th.classList.remove("sort-asc", "sort-desc");
-
         if (th.dataset.column === sortState[tableName].column) {
             th.classList.add(sortState[tableName].direction === "asc" ? "sort-asc" : "sort-desc");
         }
@@ -115,207 +183,383 @@ function handleSortClick(event) {
     const column = th.dataset.column;
     const type = th.dataset.type || "text";
     const current = sortState[tableName];
+    if (!current) return;
 
     if (current.column === column) {
         current.direction = current.direction === "asc" ? "desc" : "asc";
     } else {
         current.column = column;
-        current.direction = type === "text" ? "asc" : "desc";
+        current.direction = column === "grade" ? "desc" : (type === "text" ? "asc" : "desc");
         current.type = type;
     }
 
-    updateSortHeaders(tableName);
-
-    if (tableName === "broker") {
-        renderRiskTable(brokerRiskData);
-    } else if (tableName === "lender") {
-        renderLenderAggressivenessTable(lenderRiskData);
-    } else if (tableName === "lawyer") {
-        renderLawyerRiskTable(lawyerRiskData);
+    if (tableName === "broker-ranking") {
+        renderBrokerRankingTable(brokerRiskData);
+    } else if (tableName === "broker-history") {
+        renderHistoryRows("brokerHistoryTable", brokerHistoryData, "broker", "broker-history");
+    } else if (tableName === "lender-ranking") {
+        renderLenderRankingTable(lenderRiskData);
+    } else if (tableName === "lender-history") {
+        renderHistoryRows("lenderHistoryTable", lenderHistoryData, "lender", "lender-history");
+    } else if (tableName === "lawyer-ranking") {
+        renderLawyerRankingTable(lawyerRiskData);
+    } else if (tableName === "lawyer-history") {
+        renderHistoryRows("lawyerHistoryTable", lawyerHistoryData, "lawyer", "lawyer-history");
     }
 }
 
-function renderRiskTable(data) {
-    brokerRiskData = Array.isArray(data) ? [...data] : [];
-    const table = document.getElementById("riskTable");
-    table.innerHTML = "";
+function renderEntityList(containerId, items, key, onSelect) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
 
-    if (!Array.isArray(data)) {
-        table.innerHTML = `<tr><td colspan="8">加载失败：${data.error || "未知错误"}</td></tr>`;
+    container.innerHTML = "";
+
+    if (!Array.isArray(items) || items.length === 0) {
+        container.innerHTML = `<div class="entity-item entity-empty">No data available.</div>`;
         return;
     }
 
-    const sortedData = sortRows(data, sortState.broker);
-
-    sortedData.forEach(b => {
-        let scoreClass = "score-low";
-        if (b.score >= 75) scoreClass = "score-high";
-        else if (b.score >= 50) scoreClass = "score-mid";
-
-        table.innerHTML += `
-            <tr>
-                <td>${b.broker ?? "-"}</td>
-                <td>${b.deals ?? "-"}</td>
-                <td>${formatCompactNumber(b.principal)}</td>
-                <td>${formatDecimal(b.lvr, 2)}</td>
-                <td>${formatDecimal(b.rate, 2)}</td>
-                <td>${formatDecimal(b.overdue_rate, 1)}%</td>
-                <td class="${scoreClass}">${formatDecimal(b.score, 1)}</td>
-                <td><strong>${b.grade ?? "-"}</strong></td>
-            </tr>
+    items.forEach((item, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "entity-item";
+        button.dataset.entity = item[key];
+        button.innerHTML = `
+            <span class="entity-name">${item[key]}</span>
+            <span class="entity-meta">Deals: ${item.deals} · Principal: ${formatCompactNumber(item.principal ?? item.total)}</span>
         `;
-    });
+        button.addEventListener("click", () => onSelect(item[key]));
+        container.appendChild(button);
 
-    updateSortHeaders("broker");
-    filterTableRows("brokerRiskSearch", "riskTable", 0);
-}
-
-function renderTopLenders(data) {
-    const lenderList = document.getElementById("lenderList");
-    lenderList.innerHTML = "";
-
-    if (!Array.isArray(data) || data.length === 0) {
-        lenderList.innerHTML = "<li>No lender data available.</li>";
-        return;
-    }
-
-    data.forEach(item => {
-        const li = document.createElement("li");
-        li.textContent = `${item.lender} | Deals: ${item.deals} | Principal: ${formatCompactNumber(item.principal)}`;
-        lenderList.appendChild(li);
+        if (index === 0) {
+            setTimeout(() => button.click(), 0);
+        }
     });
 }
 
-function renderLenderAggressivenessTable(data) {
-    lenderRiskData = Array.isArray(data) ? [...data] : [];
-    const tableBody = document.getElementById("lenderRiskTable");
-    tableBody.innerHTML = "";
+function setActiveEntity(containerId, name) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
 
-    if (!Array.isArray(data)) {
-        tableBody.innerHTML = `<tr><td colspan="9">加载失败：${data.error || "未知错误"}</td></tr>`;
-        return;
-    }
-
-    const sortedData = sortRows(data, sortState.lender);
-
-    sortedData.forEach(item => {
-        const row = document.createElement("tr");
-
-        row.innerHTML = `
-            <td>${item.lender ?? "-"}</td>
-            <td>${item.deals ?? "-"}</td>
-            <td>${formatCompactNumber(item.principal)}</td>
-            <td>${Number(item.lvr).toFixed(2)}</td>
-            <td>${Number(item.rate).toFixed(2)}</td>
-            <td>${Number(item.term).toFixed(0)}</td>
-            <td>${Number(item.second_share).toFixed(1)}%</td>
-            <td>${Number(item.score).toFixed(1)}</td>
-            <td>${item.grade ?? "-"}</td>
-        `;
-
-        tableBody.appendChild(row);
+    container.querySelectorAll(".entity-item").forEach(item => {
+        item.classList.toggle("active", item.dataset.entity === name);
     });
-
-    updateSortHeaders("lender");
-    filterTableRows("lenderRiskSearch", "lenderRiskTable", 0);
 }
 
-function renderLawyerRiskTable(data) {
-    lawyerRiskData = Array.isArray(data) ? [...data] : [];
-    const tbody = document.getElementById("partnerRiskTableBody");
+function renderHistoryRows(tbodyId, rows, mode, tableName) {
+    const tbody = document.getElementById(tbodyId);
+    if (!tbody) return;
     tbody.innerHTML = "";
 
-    if (!Array.isArray(data)) {
+    if (!Array.isArray(rows) || rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9">No history records found.</td></tr>`;
+        if (tableName) updateSortHeaders(tableName);
         return;
     }
 
-    const sortedData = sortRows(data, sortState.lawyer);
+    const sortedRows = tableName ? sortRows(rows, sortState[tableName]) : rows;
 
-    sortedData.forEach(row => {
+    sortedRows.forEach(row => {
+        const tr = document.createElement("tr");
+
+        if (mode === "lawyer") {
+            tr.innerHTML = `
+                <td>${row.matter_no ?? "-"}</td>
+                <td>${row.broker ?? "-"}</td>
+                <td>${row.lender ?? "-"}</td>
+                <td>${formatCompactNumber(row.principal)}</td>
+                <td>${formatDecimal(row.rate, 2)}</td>
+                <td>${formatDecimal(row.lvr, 2)}</td>
+                <td>${formatDate(row.settlement_date)}</td>
+                <td>${formatDate(row.repayment_date)}</td>
+                <td>${row.status ?? "-"}</td>
+            `;
+        } else {
+            tr.innerHTML = `
+                <td>${row.matter_no ?? "-"}</td>
+                <td>${row.counterparty ?? "-"}</td>
+                <td>${formatCompactNumber(row.principal)}</td>
+                <td>${formatDecimal(row.rate, 2)}</td>
+                <td>${formatDecimal(row.lvr, 2)}</td>
+                <td>${row.security_type ?? "-"}</td>
+                <td>${formatDate(row.settlement_date)}</td>
+                <td>${formatDate(row.repayment_date)}</td>
+                <td>${row.status ?? "-"}</td>
+            `;
+        }
+
+        tbody.appendChild(tr);
+    });
+
+    if (tableName) updateSortHeaders(tableName);
+}
+
+function renderBrokerSnapshot(name) {
+    const tbody = document.getElementById("brokerSnapshotTable");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+
+    const row = brokerRiskData.find(item => item.broker === name);
+    if (!row) {
+        tbody.innerHTML = `<tr><td colspan="8">No broker risk snapshot available.</td></tr>`;
+        return;
+    }
+
+    let scoreClass = "score-low";
+    if (row.score >= 75) scoreClass = "score-high";
+    else if (row.score >= 50) scoreClass = "score-mid";
+
+    tbody.innerHTML = `
+        <tr>
+            <td>${row.broker}</td>
+            <td>${row.deals}</td>
+            <td>${formatCompactNumber(row.principal)}</td>
+            <td>${formatDecimal(row.lvr, 2)}</td>
+            <td>${formatDecimal(row.rate, 2)}</td>
+            <td>${formatDecimal(row.overdue_rate, 1)}%</td>
+            <td class="${scoreClass}">${formatDecimal(row.score, 1)}</td>
+            <td><strong>${row.grade}</strong></td>
+        </tr>
+    `;
+}
+
+function renderBrokerRankingTable(rows) {
+    const tbody = document.getElementById("brokerRankingTable");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8">No broker ranking data available.</td></tr>`;
+        return;
+    }
+
+    sortRows(rows, sortState["broker-ranking"]).forEach(row => {
+        let scoreClass = "score-low";
+        if (row.score >= 75) scoreClass = "score-high";
+        else if (row.score >= 50) scoreClass = "score-mid";
+
         const tr = document.createElement("tr");
         tr.innerHTML = `
-            <td>${row.partner_name ?? ""}</td>
-            <td>${row.deals ?? ""}</td>
-            <td>${(Number(row.overdue_rate) * 100).toFixed(2)}%</td>
-            <td>${row.score ?? ""}</td>
-            <td>${row.grade ?? ""}</td>
+            <td>${row.broker}</td>
+            <td>${row.deals}</td>
+            <td>${formatCompactNumber(row.principal)}</td>
+            <td>${formatDecimal(row.lvr, 2)}</td>
+            <td>${formatDecimal(row.rate, 2)}</td>
+            <td>${formatDecimal(row.overdue_rate, 1)}%</td>
+            <td class="${scoreClass}">${formatDecimal(row.score, 1)}</td>
+            <td><strong>${row.grade}</strong></td>
         `;
         tbody.appendChild(tr);
     });
 
-    updateSortHeaders("lawyer");
-    filterTableRows("lawyerRiskSearch", "partnerRiskTableBody", 0);
+    updateSortHeaders("broker-ranking");
+}
+
+function renderLenderSnapshot(name) {
+    const tbody = document.getElementById("lenderSnapshotTable");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+
+    const row = lenderRiskData.find(item => item.lender === name);
+    if (!row) {
+        tbody.innerHTML = `<tr><td colspan="9">No lender risk snapshot available.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = `
+        <tr>
+            <td>${row.lender}</td>
+            <td>${row.deals}</td>
+            <td>${formatCompactNumber(row.principal)}</td>
+            <td>${formatDecimal(row.lvr, 2)}</td>
+            <td>${formatDecimal(row.rate, 2)}</td>
+            <td>${formatDecimal(row.term, 0)}</td>
+            <td>${formatDecimal(row.second_share, 1)}%</td>
+            <td>${formatDecimal(row.score, 1)}</td>
+            <td><strong>${row.grade}</strong></td>
+        </tr>
+    `;
+}
+
+function renderLenderRankingTable(rows) {
+    const tbody = document.getElementById("lenderRankingTable");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9">No lender ranking data available.</td></tr>`;
+        return;
+    }
+
+    sortRows(rows, sortState["lender-ranking"]).forEach(row => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td>${row.lender}</td>
+            <td>${row.deals}</td>
+            <td>${formatCompactNumber(row.principal)}</td>
+            <td>${formatDecimal(row.lvr, 2)}</td>
+            <td>${formatDecimal(row.rate, 2)}</td>
+            <td>${formatDecimal(row.term, 0)}</td>
+            <td>${formatDecimal(row.second_share, 1)}%</td>
+            <td>${formatDecimal(row.score, 1)}</td>
+            <td><strong>${row.grade}</strong></td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    updateSortHeaders("lender-ranking");
+}
+
+function renderLawyerSnapshot(name) {
+    const tbody = document.getElementById("lawyerSnapshotTable");
+    const statusEl = document.getElementById("partnerRiskStatus");
+    if (!tbody || !statusEl) return;
+    tbody.innerHTML = "";
+
+    const row = lawyerRiskData.find(item => item.partner_name === name);
+    if (!row) {
+        statusEl.textContent = "No lawyer score snapshot available for this lawyer.";
+        tbody.innerHTML = `<tr><td colspan="5">No lawyer score snapshot available.</td></tr>`;
+        return;
+    }
+
+    statusEl.textContent = `Showing score snapshot for ${name}`;
+    tbody.innerHTML = `
+        <tr>
+            <td>${row.partner_name}</td>
+            <td>${row.deals}</td>
+            <td>${formatDecimal(Number(row.overdue_rate) * 100, 2)}%</td>
+            <td>${row.score}</td>
+            <td><strong>${row.grade}</strong></td>
+        </tr>
+    `;
+}
+
+function renderLawyerRankingTable(rows) {
+    const tbody = document.getElementById("lawyerRankingTable");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5">No lawyer ranking data available.</td></tr>`;
+        return;
+    }
+
+    sortRows(rows, sortState["lawyer-ranking"]).forEach(row => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td>${row.partner_name}</td>
+            <td>${row.deals}</td>
+            <td>${formatDecimal(Number(row.overdue_rate) * 100, 2)}%</td>
+            <td>${row.score}</td>
+            <td><strong>${row.grade}</strong></td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    updateSortHeaders("lawyer-ranking");
+}
+
+async function selectBroker(name) {
+    setActiveEntity("brokerList", name);
+    document.getElementById("brokerDetailTitle").textContent = `${name} History`;
+    document.getElementById("brokerDetailSubtitle").textContent = "Recent matters and lending records for the selected broker.";
+    renderBrokerSnapshot(name);
+
+    const res = await fetch(`/api/broker-history?broker=${encodeURIComponent(name)}`);
+    const data = await res.json();
+    brokerHistoryData = data;
+    renderHistoryRows("brokerHistoryTable", brokerHistoryData, "broker", "broker-history");
+}
+
+async function selectLender(name) {
+    setActiveEntity("lenderList", name);
+    document.getElementById("lenderDetailTitle").textContent = `${name} History`;
+    document.getElementById("lenderDetailSubtitle").textContent = "Recent matters and lending records for the selected lender.";
+    renderLenderSnapshot(name);
+
+    const res = await fetch(`/api/lender-history?lender=${encodeURIComponent(name)}`);
+    const data = await res.json();
+    lenderHistoryData = data;
+    renderHistoryRows("lenderHistoryTable", lenderHistoryData, "lender", "lender-history");
+}
+
+async function selectLawyer(name) {
+    setActiveEntity("lawyerList", name);
+    document.getElementById("lawyerDetailTitle").textContent = `${name} History`;
+    document.getElementById("lawyerDetailSubtitle").textContent = "Recent matters handled by the selected lawyer.";
+    renderLawyerSnapshot(name);
+
+    const res = await fetch(`/api/lawyer-history?lawyer=${encodeURIComponent(name)}`);
+    const data = await res.json();
+    lawyerHistoryData = data;
+    renderHistoryRows("lawyerHistoryTable", lawyerHistoryData, "lawyer", "lawyer-history");
 }
 
 function renderMarketChart(data) {
-    const labels = data.map(x => x.type);
+    const labels = data.map(x => titleCaseLabel(x.type));
     const values = data.map(x => x.principal);
-
     const ctx = document.getElementById("marketChart").getContext("2d");
 
-    if (marketChartInstance) {
-        marketChartInstance.destroy();
-    }
+    if (marketChartInstance) marketChartInstance.destroy();
 
     marketChartInstance = new Chart(ctx, {
         type: "doughnut",
         data: {
-            labels: labels,
+            labels,
             datasets: [{
                 data: values,
                 backgroundColor: chartPalette.market,
                 borderColor: "rgba(255, 253, 248, 0.95)",
                 borderWidth: 3,
-                hoverOffset: 10
+                hoverOffset: 10,
+                radius: "78%"
             }]
         },
         options: {
             maintainAspectRatio: false,
             responsive: true,
-            cutout: "58%",
+            cutout: "50%",
+            layout: {
+                padding: {
+                    left: 8,
+                    right: 8
+                }
+            },
             plugins: {
-                legend: {
-                    position: "right",
-                    labels: {
-                        font: {
-                            size: 15
-                        },
-                        boxWidth: 18,
-                        padding: 16,
-                        usePointStyle: true,
-                        pointStyle: "circle"
-                    }
-                },
+                legend: { display: false },
                 tooltip: {
+                    titleFont: { size: 16, weight: "700" },
+                    bodyFont: { size: 15 },
+                    padding: 12,
+                    displayColors: true,
                     callbacks: {
                         label(context) {
-                            const value = context.parsed || 0;
-                            return `${context.label}: ${formatCompactNumber(value)}`;
+                            return `${context.label}: ${formatMillions(context.parsed || 0, 1)} million AUD`;
                         }
                     }
                 }
             }
         }
     });
+
+    renderCustomLegend("marketLegend", labels, chartPalette.market, marketChartInstance, "list");
 }
 
 function renderTrendChart(data) {
     const labels = data.map(x => x.date);
     const values = data.map(x => x.principal);
-
     const ctx = document.getElementById("trendChart").getContext("2d");
     const gradient = ctx.createLinearGradient(0, 0, 0, 320);
     gradient.addColorStop(0, "rgba(12, 92, 76, 0.38)");
     gradient.addColorStop(1, "rgba(12, 92, 76, 0.05)");
 
-    if (trendChartInstance) {
-        trendChartInstance.destroy();
-    }
+    if (trendChartInstance) trendChartInstance.destroy();
 
     trendChartInstance = new Chart(ctx, {
         type: "bar",
         data: {
-            labels: labels,
+            labels,
             datasets: [{
                 label: "Monthly Principal",
                 data: values,
@@ -333,48 +577,47 @@ function renderTrendChart(data) {
             plugins: {
                 legend: {
                     labels: {
-                        font: {
-                            size: 15
-                        },
+                        font: { size: 15 },
                         usePointStyle: true,
                         pointStyle: "rectRounded"
                     }
                 },
                 tooltip: {
+                    titleFont: { size: 16, weight: "700" },
+                    bodyFont: { size: 15 },
+                    padding: 12,
+                    displayColors: false,
                     callbacks: {
                         label(context) {
-                            return `${context.dataset.label}: ${formatCompactNumber(context.parsed.y)}`;
+                            return `${context.dataset.label}: ${formatMillions(context.parsed.y, 1)} million AUD`;
                         }
                     }
                 }
             },
             scales: {
                 x: {
-                    grid: {
-                        display: false
-                    },
+                    grid: { display: false },
                     ticks: {
                         color: "#5c675f",
-                        font: {
-                            size: 13
-                        },
+                        font: { size: 16 },
                         maxRotation: 45,
                         minRotation: 45
                     }
                 },
                 y: {
                     beginAtZero: true,
-                    grid: {
-                        color: "rgba(28, 36, 33, 0.08)"
+                    grid: { color: "rgba(28, 36, 33, 0.08)" },
+                    title: {
+                        display: true,
+                        text: "Million AUD",
+                        color: "#5c675f",
+                        font: { size: 16, weight: "600" }
                     },
                     ticks: {
                         color: "#5c675f",
-                        font: {
-                            size: 13
-                        },
-                        callback(value) {
-                            return formatCompactNumber(value);
-                        }
+                        font: { size: 16 },
+                        maxTicksLimit: 5,
+                        callback(value) { return formatMillions(value, 1); }
                     }
                 }
             }
@@ -382,50 +625,130 @@ function renderTrendChart(data) {
     });
 }
 
-async function refreshData() {
-    const page = document.body.dataset.page;
+function renderLenderMarketChart(data) {
+    const labels = data.map(x => x.type);
+    const values = data.map(x => x.principal);
+    const ctx = document.getElementById("lenderMarketChart").getContext("2d");
 
-    if (page === "overview") {
-        await loadOverviewPage();
-        return;
-    }
+    if (lenderMarketChartInstance) lenderMarketChartInstance.destroy();
 
-    if (page === "brokers") {
-        await loadBrokerPage();
-        return;
-    }
+    lenderMarketChartInstance = new Chart(ctx, {
+        type: "doughnut",
+        data: {
+            labels,
+            datasets: [{
+                data: values,
+                backgroundColor: chartPalette.market,
+                borderColor: "rgba(255, 253, 248, 0.95)",
+                borderWidth: 3,
+                hoverOffset: 10,
+                radius: "78%"
+            }]
+        },
+        options: {
+            maintainAspectRatio: false,
+            responsive: true,
+            cutout: "50%",
+            layout: {
+                padding: {
+                    left: 8,
+                    right: 8
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    titleFont: { size: 16, weight: "700" },
+                    bodyFont: { size: 15 },
+                    padding: 12,
+                    displayColors: true,
+                    callbacks: {
+                        label(context) {
+                            return `${context.label}: ${formatMillions(context.parsed || 0, 1)} million AUD`;
+                        }
+                    }
+                }
+            }
+        }
+    });
 
-    if (page === "lenders") {
-        await loadLenderPage();
-        return;
-    }
+    renderCustomLegend("lenderLegend", labels, chartPalette.market, lenderMarketChartInstance, "list");
+}
 
-    if (page === "lawyers") {
-        await loadLawyerPage();
-        return;
-    }
+function renderSecurityChart(data) {
+    if (!Array.isArray(data)) return;
+    const labels = data.map(d => d.type);
+    const values = data.map(d => d.count);
+    const ctx = document.getElementById("securityChart").getContext("2d");
+
+    if (securityChartInstance) securityChartInstance.destroy();
+
+    securityChartInstance = new Chart(ctx, {
+        type: "doughnut",
+        data: {
+            labels,
+            datasets: [{
+                data: values,
+                backgroundColor: chartPalette.security,
+                borderColor: "rgba(255, 253, 248, 0.95)",
+                borderWidth: 3,
+                hoverOffset: 10,
+                radius: "78%"
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: "50%",
+            layout: {
+                padding: {
+                    right: 8,
+                    left: 8
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    titleFont: { size: 16, weight: "700" },
+                    bodyFont: { size: 15 },
+                    padding: 12,
+                    displayColors: true,
+                    callbacks: {
+                        label(context) {
+                            return `${context.label}: ${formatNumber(context.parsed)}`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    renderCustomLegend("securityLegend", labels, chartPalette.security, securityChartInstance, "grid");
 }
 
 async function loadOverviewPage() {
     try {
-        const [overviewRes, marketRes, trendRes, securityRes] = await Promise.all([
+        const [overviewRes, marketRes, lenderMarketRes, trendRes, securityRes] = await Promise.all([
             fetch("/api/overview"),
             fetch("/api/market-structure"),
+            fetch("/api/lender-market-structure"),
             fetch("/api/trend"),
             fetch("/api/security-type")
         ]);
 
         const overview = await overviewRes.json();
         const market = await marketRes.json();
+        const lenderMarket = await lenderMarketRes.json();
         const trend = await trendRes.json();
         const security = await securityRes.json();
 
         renderOverview(overview);
         renderMarketChart(market);
+        renderLenderMarketChart(lenderMarket);
         renderTrendChart(trend);
         renderSecurityChart(security);
     } catch (error) {
-        console.error("刷新数据失败:", error);
+        console.error("Overview load failed:", error);
     }
 }
 
@@ -436,11 +759,10 @@ async function loadBrokerPage() {
             fetch("/api/broker-risk")
         ]);
 
-        const brokers = await brokersRes.json();
-        const brokerRisk = await brokerRiskRes.json();
-
-        renderTopBrokers(brokers);
-        renderRiskTable(brokerRisk);
+        brokerListData = await brokersRes.json();
+        brokerRiskData = await brokerRiskRes.json();
+        renderEntityList("brokerList", brokerListData, "broker", selectBroker);
+        renderBrokerRankingTable(brokerRiskData);
     } catch (error) {
         console.error("Broker page load failed:", error);
     }
@@ -453,128 +775,43 @@ async function loadLenderPage() {
             fetch("/api/lender-aggressiveness")
         ]);
 
-        const lenders = await lendersRes.json();
-        const lenderRisk = await lenderRiskRes.json();
-
-        renderTopLenders(lenders);
-        renderLenderAggressivenessTable(lenderRisk);
+        lenderListData = await lendersRes.json();
+        lenderRiskData = await lenderRiskRes.json();
+        renderEntityList("lenderList", lenderListData, "lender", selectLender);
+        renderLenderRankingTable(lenderRiskData);
     } catch (error) {
         console.error("Lender page load failed:", error);
     }
 }
 
 async function loadLawyerPage() {
-    await loadPartnerRisk();
-}
-
-function renderSecurityChart(data) {
-    if (!Array.isArray(data)) return;
-
-    const labels = data.map(d => d.type);
-    const values = data.map(d => d.count);
-
-    const ctx = document.getElementById("securityChart").getContext("2d");
-
-    if (securityChartInstance) {
-        securityChartInstance.destroy();
-    }
-
-    securityChartInstance = new Chart(ctx, {
-        type: "doughnut",
-        data: {
-            labels: labels,
-            datasets: [{
-                data: values,
-                backgroundColor: chartPalette.security,
-                borderColor: "rgba(255, 253, 248, 0.95)",
-                borderWidth: 3,
-                hoverOffset: 10
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            cutout: "54%",
-            plugins: {
-                legend: {
-                    position: "right",
-                    labels: {
-                        font: {
-                            size: 15
-                        },
-                        boxWidth: 18,
-                        padding: 16,
-                        usePointStyle: true,
-                        pointStyle: "circle"
-                    }
-                },
-                tooltip: {
-                    callbacks: {
-                        label(context) {
-                            return `${context.label}: ${formatNumber(context.parsed)}`;
-                        }
-                    }
-                }
-            }
-        }
-    });
-}
-
-async function loadPartnerRisk() {
-    const statusEl = document.getElementById("partnerRiskStatus");
-    const tbody = document.getElementById("partnerRiskTableBody");
-
-    statusEl.textContent = "Loading...";
-    tbody.innerHTML = "";
-
     try {
-        const response = await fetch("/api/partner-risk");
-        const data = await response.json();
+        const [lawyersRes, lawyerRiskRes] = await Promise.all([
+            fetch("/api/all-lawyers"),
+            fetch("/api/partner-risk")
+        ]);
 
-        console.log("lawyer risk response:", data);
-
-        if (!response.ok) {
-            throw new Error(data.error || `HTTP ${response.status}`);
-        }
-
-        if (!Array.isArray(data) || data.length === 0) {
-            statusEl.textContent = "No lawyer risk data found.";
-            return;
-        }
-
-        renderLawyerRiskTable(data);
-        statusEl.textContent = `Loaded ${data.length} lawyers`;
+        lawyerListData = await lawyersRes.json();
+        lawyerRiskData = await lawyerRiskRes.json();
+        renderEntityList("lawyerList", lawyerListData, "lawyer", selectLawyer);
+        renderLawyerRankingTable(lawyerRiskData);
     } catch (error) {
-        console.error("Lawyer risk load error:", error);
-        statusEl.textContent = "Failed to load lawyer risk data: " + error.message;
+        console.error("Lawyer page load failed:", error);
     }
 }
 
-function formatPercent(value) {
-    if (value === null || value === undefined || value === "") {
-        return "";
+async function refreshData() {
+    const page = document.body.dataset.page;
+
+    if (page === "overview") {
+        await loadOverviewPage();
+    } else if (page === "brokers") {
+        await loadBrokerPage();
+    } else if (page === "lenders") {
+        await loadLenderPage();
+    } else if (page === "lawyers") {
+        await loadLawyerPage();
     }
-    return (Number(value) * 100).toFixed(2) + "%";
-}
-
-function renderGradeBadge(grade) {
-    let color = "#999";
-
-    if (grade === "A") color = "#2e7d32";
-    else if (grade === "B") color = "#1565c0";
-    else if (grade === "C") color = "#ef6c00";
-    else if (grade === "D") color = "#c62828";
-
-    return `<span style="
-        display:inline-block;
-        min-width:32px;
-        text-align:center;
-        padding:4px 8px;
-        border-radius:12px;
-        color:white;
-        background:${color};
-        font-weight:bold;
-    ">${grade}</span>`;
 }
 
 document.addEventListener("DOMContentLoaded", () => {

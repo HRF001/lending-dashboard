@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="story-section">
+    <div class="section-heading">
+        <span class="section-kicker">Layer 3</span>
+        <h2>Lender Analysis</h2>
+        <p>
+            This page shows lender scale, lending style, and how aggressively each lender
+            tends to structure deals.
+        </p>
+    </div>
+
+    <div class="content-grid">
+        <section class="panel list-panel">
+            <div class="panel-header">
+                <h3>All Lenders</h3>
+                <p>Full lender list ranked by principal deployed.</p>
+            </div>
+            <ul id="lenderList" class="entity-list"></ul>
+        </section>
+
+        <section class="panel table-panel">
+            <div class="panel-header">
+                <h3>Lender Aggressiveness</h3>
+                <p>Cluster-driven view of conservative, balanced, and aggressive lender profiles.</p>
+            </div>
+            <input
+                id="lenderRiskSearch"
+                class="table-search"
+                type="search"
+                placeholder="Search lender name"
+                oninput="filterTableRows('lenderRiskSearch', 'lenderRiskTable', 0)"
+            >
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="sortable" data-table="lender" data-column="lender" data-type="text">Lender</th>
+                            <th class="sortable" data-table="lender" data-column="deals" data-type="number">Deals</th>
+                            <th class="sortable" data-table="lender" data-column="principal" data-type="number">Principal</th>
+                            <th class="sortable" data-table="lender" data-column="lvr" data-type="number">LVR</th>
+                            <th class="sortable" data-table="lender" data-column="rate" data-type="number">Rate</th>
+                            <th class="sortable" data-table="lender" data-column="term" data-type="number">Avg Term</th>
+                            <th class="sortable" data-table="lender" data-column="second_share" data-type="number">Second %</th>
+                            <th class="sortable" data-table="lender" data-column="score" data-type="number">Score</th>
+                            <th class="sortable" data-table="lender" data-column="grade" data-type="text">Level</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lenderRiskTable"></tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+</section>
+{% endblock %}

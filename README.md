@@ -93,6 +93,8 @@
 ```text
 .
 ├── app.py                  # Flask 后端
+├── db_config.py            # 共享数据库配置
+├── feature_utils.py        # 共享特征清洗逻辑
 ├── model_predict.py        # 模型预测
 ├── model_train.py          # 模型训练
 ├── import.py               # 数据导入脚本
@@ -100,3 +102,25 @@
 ├── templates/              # HTML 页面
 ├── requirements.txt
 └── broker_risk_model.pkl
+```
+
+## ⚙️ 运行配置
+
+数据库连接优先读取以下环境变量；未设置时默认回退到本地开发库：
+
+- `PGHOST`，默认 `localhost`
+- `PGPORT`，默认 `5433`
+- `PGDATABASE`，默认 `lending_db`
+- `PGUSER`，默认 `postgres`
+- `PGPASSWORD`，默认 `1`
+
+示例：
+
+```powershell
+$env:PGHOST="localhost"
+$env:PGPORT="5433"
+$env:PGDATABASE="lending_db"
+$env:PGUSER="postgres"
+$env:PGPASSWORD="your_password"
+python app.py
+```

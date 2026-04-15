@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="story-section">
+    <div class="section-heading">
+        <span class="section-kicker">Layer 4</span>
+        <h2>Lawyer Analysis</h2>
+        <p>
+            This page highlights lawyer execution quality by tracking overdue outcomes
+            and converting them into a simple operating score.
+        </p>
+    </div>
+
+    <section class="panel table-panel">
+        <div class="panel-header">
+            <div>
+                <h3>Lawyer Risk Analysis</h3>
+                <p>Performance view of lawyers involved in the lending process.</p>
+            </div>
+        </div>
+
+        <div id="partnerRiskStatus" class="status-text"></div>
+        <input
+            id="lawyerRiskSearch"
+            class="table-search"
+            type="search"
+            placeholder="Search lawyer name"
+            oninput="filterTableRows('lawyerRiskSearch', 'partnerRiskTableBody', 0)"
+        >
+
+        <div class="table-wrap">
+            <table id="partnerRiskTable">
+                <thead>
+                    <tr>
+                        <th class="sortable" data-table="lawyer" data-column="partner_name" data-type="text">Lawyer</th>
+                        <th class="sortable" data-table="lawyer" data-column="deals" data-type="number">Deals</th>
+                        <th class="sortable" data-table="lawyer" data-column="overdue_rate" data-type="number">Overdue Rate</th>
+                        <th class="sortable" data-table="lawyer" data-column="score" data-type="number">Score</th>
+                        <th class="sortable" data-table="lawyer" data-column="grade" data-type="text">Grade</th>
+                    </tr>
+                </thead>
+                <tbody id="partnerRiskTableBody"></tbody>
+            </table>
+        </div>
+    </section>
+</section>
+{% endblock %}

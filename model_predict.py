@@ -1,47 +1,27 @@
 import pickle
-import numpy as np
 import pandas as pd
+from pathlib import Path
 
-MODEL_PATH = "broker_risk_model.pkl"
+from feature_utils import prepare_loan_features
 
-with open(MODEL_PATH, "rb") as f:
-    model = pickle.load(f)
+MODEL_PATH = Path(__file__).with_name("broker_risk_model.pkl")
+_model = None
 
 
-def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-
-    df["settlement_date"] = pd.to_datetime(df["settlement_date"], errors="coerce")
-    df["repayment_date"] = pd.to_datetime(df["repayment_date"], errors="coerce")
-    df["discharged"] = pd.to_datetime(df["discharged"], errors="coerce")
-
-    df["loan_term"] = (df["repayment_date"] - df["settlement_date"]).dt.days
-    df["log_principal"] = np.log(df["principal_amount"].fillna(0) + 1)
-
-    if "priority_level" in df.columns:
-        priority_map = {
-            "first": 1,
-            "second": 2,
-            "third": 3,
-            "fourth": 4
-        }
-        df["priority_level"] = (
-        df["priority_level"]
-        .astype(str)
-        .str.strip()
-        .str.lower()
-        .map(priority_map)
-)
-
-    return df
+def get_model():
+    global _model
+    if _model is None:
+        with open(MODEL_PATH, "rb") as f:
+            _model = pickle.load(f)
+    return _model
 
 
 def score_loans(df: pd.DataFrame) -> pd.DataFrame:
-    df = prepare_features(df)
+    df = prepare_loan_features(df)
 
     features = ["priority_level", "rate", "lvr", "loan_term", "log_principal"]
 
     X = df[features].copy()
-    df["pred_prob"] = model.predict_proba(X)[:, 1]
+    df["pred_prob"] = get_model().predict_proba(X)[:, 1]
 
     return df

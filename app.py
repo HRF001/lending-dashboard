@@ -2,35 +2,61 @@ from flask import Flask, render_template, jsonify
 import psycopg2
 import subprocess
 import os
+import sys
 import pandas as pd
 from model_predict import score_loans
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
+from db_config import get_db_config
+
 app = Flask(__name__)
 
 def get_conn():
-    return psycopg2.connect(
-        host=os.environ["PGHOST"],
-        port=os.environ.get("PGPORT", "5432"),
-        dbname=os.environ["PGDATABASE"],
-        user=os.environ["PGUSER"],
-        password=os.environ["PGPASSWORD"]
-    )
-"""
-def get_conn():
-    return psycopg2.connect(
-        host="localhost",
-        port=5433,
-        dbname="lending_db",    
-        user="postgres",       
-        password="1"      
-    )
-"""
+    return psycopg2.connect(**get_db_config())
    
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template(
+        "overview.html",
+        page="overview",
+        title="Data & Market | Lending Dashboard",
+        hero_title="Data Scale & Market Structure",
+        hero_text="Start with the size, composition, and market shape of the lending dataset.",
+    )
+
+
+@app.route("/brokers")
+def brokers_page():
+    return render_template(
+        "brokers.html",
+        page="brokers",
+        title="Broker Analysis | Lending Dashboard",
+        hero_title="Broker Analysis",
+        hero_text="Review broker contribution, concentration, and modeled portfolio risk.",
+    )
+
+
+@app.route("/lenders")
+def lenders_page():
+    return render_template(
+        "lenders.html",
+        page="lenders",
+        title="Lender Analysis | Lending Dashboard",
+        hero_title="Lender Analysis",
+        hero_text="Compare lender scale, lending style, and aggressiveness across the market.",
+    )
+
+
+@app.route("/lawyers")
+def lawyers_page():
+    return render_template(
+        "lawyers.html",
+        page="lawyers",
+        title="Lawyer Analysis | Lending Dashboard",
+        hero_title="Lawyer Analysis",
+        hero_text="Track lawyer execution quality through overdue outcomes and operating scores.",
+    )
 
 @app.route("/api/overview")
 def overview():
@@ -112,7 +138,6 @@ def top_brokers():
               AND broker NOT ILIKE '%direct%'
             GROUP BY broker
             ORDER BY SUM(principal_amount) DESC
-            LIMIT 10
         """)
 
         rows = cur.fetchall()
@@ -241,7 +266,6 @@ def top_lenders():
                 AND TRIM(lender) <> ''
                 GROUP BY lender
                 ORDER BY total_principal DESC
-                LIMIT 10
             """)
             rows = cur.fetchall()
 
@@ -302,7 +326,8 @@ def lender_aggressiveness():
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X)
 
-        kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
+        cluster_count = min(3, len(df))
+        kmeans = KMeans(n_clusters=cluster_count, random_state=42, n_init=10)
         df["cluster"] = kmeans.fit_predict(X_scaled)
 
         centers = pd.DataFrame(
@@ -321,10 +346,16 @@ def lender_aggressiveness():
 
         centers = centers.sort_values("aggressiveness_proxy").reset_index(drop=True)
 
+        if cluster_count == 1:
+            labels = ["Balanced"]
+        elif cluster_count == 2:
+            labels = ["Conservative", "Aggressive"]
+        else:
+            labels = ["Conservative", "Balanced", "Aggressive"]
+
         label_map = {
-            int(centers.iloc[0]["cluster"]): "Conservative",
-            int(centers.iloc[1]["cluster"]): "Balanced",
-            int(centers.iloc[2]["cluster"]): "Aggressive",
+            int(centers.iloc[idx]["cluster"]): labels[idx]
+            for idx in range(cluster_count)
         }
 
         df["level"] = df["cluster"].map(label_map)
@@ -490,7 +521,8 @@ def trend():
 @app.route("/api/refresh")
 def refresh():
     try:
-        subprocess.run(["python", "import_excels.py"], check=True)
+        script_path = os.path.join(os.path.dirname(__file__), "import.py")
+        subprocess.run([sys.executable, script_path], check=True)
         return jsonify({"status": "ok"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500

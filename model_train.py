@@ -1,5 +1,4 @@
 import pickle
-import numpy as np
 import pandas as pd
 import psycopg2
 
@@ -11,15 +10,12 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
+from db_config import get_db_config
+from feature_utils import prepare_loan_features
+
 
 def get_conn():
-    return psycopg2.connect(
-        host="dpg-d7cvcndckfvc73efcubg-a.oregon-postgres.render.com",
-        port=5432,
-        dbname="omicron",
-        user="omicron_user",
-        password="pxYOIUbbg1nd93565IONMBG6Dvc4niQE"
-    )
+    return psycopg2.connect(**get_db_config())
 
 
 def load_data():
@@ -50,26 +46,7 @@ def load_data():
 
 
 def preprocess(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-
-    priority_map = {
-        "First": 1,
-        "Second": 2,
-        "Third": 3,
-        "Fourth": 4
-    }
-
-    df["priority_level"] = df["priority_level"].map(priority_map)
-
-    df["settlement_date"] = pd.to_datetime(df["settlement_date"], errors="coerce")
-    df["repayment_date"] = pd.to_datetime(df["repayment_date"], errors="coerce")
-    df["discharged"] = pd.to_datetime(df["discharged"], errors="coerce")
-
-    # 贷款期限
-    df["loan_term"] = (df["repayment_date"] - df["settlement_date"]).dt.days
-
-    # 金额取 log，避免极端值影响
-    df["log_principal"] = np.log(df["principal_amount"].fillna(0) + 1)
+    df = prepare_loan_features(df)
 
     # 逾期标签：到期且未 discharged
     today = pd.Timestamp.today().normalize()

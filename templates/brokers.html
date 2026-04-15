@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="story-section">
+    <div class="section-heading">
+        <span class="section-kicker">Layer 2</span>
+        <h2>Broker Analysis</h2>
+        <p>
+            This page focuses on broker contribution, concentration, and modeled risk
+            across the intermediary network.
+        </p>
+    </div>
+
+    <div class="content-grid">
+        <section class="panel list-panel">
+            <div class="panel-header">
+                <h3>All Brokers</h3>
+                <p>Full broker list ranked by deal flow and principal footprint.</p>
+            </div>
+            <ul id="brokerList" class="entity-list"></ul>
+        </section>
+
+        <section class="panel table-panel">
+            <div class="panel-header">
+                <h3>Broker Risk & Score</h3>
+                <p>Risk score combines modeled loan risk with realized overdue behavior.</p>
+            </div>
+            <input
+                id="brokerRiskSearch"
+                class="table-search"
+                type="search"
+                placeholder="Search broker name"
+                oninput="filterTableRows('brokerRiskSearch', 'riskTable', 0)"
+            >
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="sortable" data-table="broker" data-column="broker" data-type="text">Broker</th>
+                            <th class="sortable" data-table="broker" data-column="deals" data-type="number">Deals</th>
+                            <th class="sortable" data-table="broker" data-column="principal" data-type="number">Principal</th>
+                            <th class="sortable" data-table="broker" data-column="lvr" data-type="number">LVR</th>
+                            <th class="sortable" data-table="broker" data-column="rate" data-type="number">Rate</th>
+                            <th class="sortable" data-table="broker" data-column="overdue_rate" data-type="number">Overdue %</th>
+                            <th class="sortable" data-table="broker" data-column="score" data-type="number">Risk Score</th>
+                            <th class="sortable" data-table="broker" data-column="grade" data-type="text">Risk Level</th>
+                        </tr>
+                    </thead>
+                    <tbody id="riskTable"></tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+</section>
+{% endblock %}

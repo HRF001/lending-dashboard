@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="story-section">
+    <div class="section-heading">
+        <span class="section-kicker">Layer 1</span>
+        <h2>Data Scale & Market Structure</h2>
+        <p>
+            This page introduces the size of the dataset, overall market footprint,
+            and the structural split between broker-led and direct lending.
+        </p>
+    </div>
+
+    <section class="cards">
+        <div class="card metric-card">
+            <div class="label">Total Deals</div>
+            <div class="value" id="totalDeals">-</div>
+        </div>
+        <div class="card metric-card">
+            <div class="label">Total Principal</div>
+            <div class="value" id="totalPrincipal">-</div>
+        </div>
+        <div class="card metric-card">
+            <div class="label">Average Principal</div>
+            <div class="value" id="avgPrincipal">-</div>
+        </div>
+    </section>
+
+    <section class="insight-grid">
+        <div class="panel chart-panel">
+            <div class="panel-header">
+                <h3>Broker Market Structure</h3>
+                <p>How the market splits across broker-driven and direct origination.</p>
+            </div>
+            <div class="chart-frame">
+                <canvas id="marketChart"></canvas>
+            </div>
+        </div>
+
+        <div class="panel chart-panel">
+            <div class="panel-header">
+                <h3>Security Type Distribution</h3>
+                <p>The asset mix behind the lending book.</p>
+            </div>
+            <div class="chart-frame">
+                <canvas id="securityChart"></canvas>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel chart-panel">
+        <div class="panel-header">
+            <h3>Monthly Settlement Trend</h3>
+            <p>Settlement volume trend over time.</p>
+        </div>
+        <div class="chart-frame chart-frame-wide">
+            <canvas id="trendChart"></canvas>
+        </div>
+    </section>
+</section>
+{% endblock %}
